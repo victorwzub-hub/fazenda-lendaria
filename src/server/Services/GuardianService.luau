@@ -73,6 +73,11 @@ local function inZone(zone, position: Vector3): boolean
 	return math.abs(offset.X) <= half and math.abs(offset.Z) <= half
 end
 
+-- Zona segura (chegada/portal de volta): guardião não entra e desiste de quem estiver lá.
+local function inSafe(zone, position: Vector3, margin: number?): boolean
+	return (flat(position) - flat(zone.safeCenter)).Magnitude <= zone.safeRadius + (margin or 0)
+end
+
 local function rootOf(player: Player): BasePart?
 	local character = player.Character
 	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -199,6 +204,14 @@ function GuardianService.alert(player: Player, position: Vector3, chance: number
 	if chasing[player] or rng:NextNumber() > chance then
 		return
 	end
+	local root = rootOf(player)
+	if root then
+		for _, guardian in guardians do
+			if inZone(guardian.zone, position) and inSafe(guardian.zone, root.Position) then
+				return
+			end
+		end
+	end
 	local now = os.clock()
 	local best: Guardian? = nil
 	local bestDistance = ALERT_RADIUS
@@ -242,6 +255,10 @@ local function step(guardian: Guardian, dt: number, now: number)
 		local target = rootOf(player)
 		if not target or now > guardian.chaseEnds or not inZone(guardian.zone, target.Position) then
 			stopChase(guardian)
+		elseif inSafe(guardian.zone, target.Position) then
+			stopChase(guardian)
+			guardian.cooldownUntil = now + COOLDOWN
+			Notify.toast(player, "🛡️ Você está na zona segura! O " .. guardian.def.name .. " desistiu", Color3.fromRGB(150, 230, 255))
 		else
 			goal = target.Position
 			speed = guardian.def.speed * (if now < guardian.chargeEnds then CHARGE_MULT else 1)
@@ -278,6 +295,9 @@ local function step(guardian: Guardian, dt: number, now: number)
 	end
 	local direction = offset.Unit
 	local moved = flat(position) + direction * math.min(distance, speed * dt)
+	if inSafe(guardian.zone, moved, 2) then
+		return
+	end
 	-- Pulinho enquanto anda: mais alto quando está correndo atrás de alguém.
 	local hop = math.abs(math.sin(now * (if guardian.state == "chase" then 14 else 8))) * (if guardian.state
 			== "chase"

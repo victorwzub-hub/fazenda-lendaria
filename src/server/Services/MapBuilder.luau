@@ -13,6 +13,7 @@ local PLOT_RADIUS = 150
 local PLOT_SIZE = 70
 local PORTAL_RADIUS = 58
 local HUB_SIZE = 440
+local SAFE_RADIUS = 22
 
 local GRASS = Color3.fromRGB(96, 196, 70)
 local SAND = Color3.fromRGB(230, 212, 160)
@@ -36,6 +37,8 @@ export type Zone = {
 	spawn: CFrame,
 	nodes: Folder,
 	returnField: BasePart,
+	safeCenter: Vector3,
+	safeRadius: number,
 }
 
 local function rad(deg: number): number
@@ -648,6 +651,58 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 	)
 	barn(model, CFrame.new(origin + Vector3.new(-half + 26, 0, half - 26)), route.theme, 18, 14, 10)
 
+	-- Zona segura em volta da chegada e do portal de volta: guardião não entra.
+	local safeCenter = origin + Vector3.new(0, 0, half - 18)
+	local safe = decor(
+		block(
+			model,
+			Vector3.new(0.3, SAFE_RADIUS * 2, SAFE_RADIUS * 2),
+			CFrame.new(safeCenter + Vector3.new(0, 0.3, 0)) * CFrame.Angles(0, 0, rad(90)),
+			Color3.fromRGB(120, 215, 255),
+			Enum.Material.SmoothPlastic,
+			Enum.PartType.Cylinder
+		)
+	)
+	safe.Name = "ZonaSegura"
+	safe.Transparency = 0.35
+	decor(
+		block(
+			model,
+			Vector3.new(0.3, SAFE_RADIUS * 2 + 2, SAFE_RADIUS * 2 + 2),
+			CFrame.new(safeCenter + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, 0, rad(90)),
+			Color3.new(1, 1, 1),
+			Enum.Material.SmoothPlastic,
+			Enum.PartType.Cylinder
+		)
+	)
+	local safeSign = decor(block(model, Vector3.one, CFrame.new(safeCenter + Vector3.new(-SAFE_RADIUS + 4, 9, 0)), GRASS))
+	safeSign.Transparency = 1
+	textLabel(
+		billboard(safeSign, UDim2.fromScale(16, 3.5), Vector3.zero, 160),
+		"Titulo",
+		"🛡️ ZONA SEGURA",
+		UDim2.fromScale(1, 1),
+		UDim2.fromScale(0, 0),
+		Color3.fromRGB(150, 230, 255)
+	)
+
+	-- Trilha de pedras saindo da zona segura para o meio da rota.
+	local pathRng = Random.new(index * 31)
+	local toCenter = (origin - safeCenter).Unit
+	local sideways = Vector3.new(toCenter.Z, 0, -toCenter.X)
+	for step = 1, 9 do
+		local at = safeCenter + toCenter * (SAFE_RADIUS + step * 5) + sideways * pathRng:NextNumber(-1.2, 1.2)
+		decor(
+			block(
+				model,
+				Vector3.new(3.4, 0.4, 3.4),
+				CFrame.new(at + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, rad(pathRng:NextNumber(-20, 20)), 0),
+				Color3.fromRGB(215, 210, 200),
+				Enum.Material.Slate
+			)
+		)
+	end
+
 	local scenery = Instance.new("Folder")
 	scenery.Name = "Cenario"
 	scenery.Parent = model
@@ -682,6 +737,8 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 		spawn = spawn,
 		nodes = nodes,
 		returnField = returnField,
+		safeCenter = safeCenter,
+		safeRadius = SAFE_RADIUS,
 	}
 end
 

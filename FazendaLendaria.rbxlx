@@ -2211,6 +2211,11 @@ local function inZone(zone, position: Vector3): boolean
 	return math.abs(offset.X) <= half and math.abs(offset.Z) <= half
 end
 
+-- Zona segura (chegada/portal de volta): guardião não entra e desiste de quem estiver lá.
+local function inSafe(zone, position: Vector3, margin: number?): boolean
+	return (flat(position) - flat(zone.safeCenter)).Magnitude <= zone.safeRadius + (margin or 0)
+end
+
 local function rootOf(player: Player): BasePart?
 	local character = player.Character
 	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -2337,6 +2342,14 @@ function GuardianService.alert(player: Player, position: Vector3, chance: number
 	if chasing[player] or rng:NextNumber() > chance then
 		return
 	end
+	local root = rootOf(player)
+	if root then
+		for _, guardian in guardians do
+			if inZone(guardian.zone, position) and inSafe(guardian.zone, root.Position) then
+				return
+			end
+		end
+	end
 	local now = os.clock()
 	local best: Guardian? = nil
 	local bestDistance = ALERT_RADIUS
@@ -2380,6 +2393,10 @@ local function step(guardian: Guardian, dt: number, now: number)
 		local target = rootOf(player)
 		if not target or now > guardian.chaseEnds or not inZone(guardian.zone, target.Position) then
 			stopChase(guardian)
+		elseif inSafe(guardian.zone, target.Position) then
+			stopChase(guardian)
+			guardian.cooldownUntil = now + COOLDOWN
+			Notify.toast(player, "🛡️ Você está na zona segura! O " .. guardian.def.name .. " desistiu", Color3.fromRGB(150, 230, 255))
 		else
 			goal = target.Position
 			speed = guardian.def.speed * (if now < guardian.chargeEnds then CHARGE_MULT else 1)
@@ -2416,6 +2433,9 @@ local function step(guardian: Guardian, dt: number, now: number)
 	end
 	local direction = offset.Unit
 	local moved = flat(position) + direction * math.min(distance, speed * dt)
+	if inSafe(guardian.zone, moved, 2) then
+		return
+	end
 	-- Pulinho enquanto anda: mais alto quando está correndo atrás de alguém.
 	local hop = math.abs(math.sin(now * (if guardian.state == "chase" then 14 else 8))) * (if guardian.state
 			== "chase"
@@ -2519,6 +2539,7 @@ local PLOT_RADIUS = 150
 local PLOT_SIZE = 70
 local PORTAL_RADIUS = 58
 local HUB_SIZE = 440
+local SAFE_RADIUS = 22
 
 local GRASS = Color3.fromRGB(96, 196, 70)
 local SAND = Color3.fromRGB(230, 212, 160)
@@ -2542,6 +2563,8 @@ export type Zone = {
 	spawn: CFrame,
 	nodes: Folder,
 	returnField: BasePart,
+	safeCenter: Vector3,
+	safeRadius: number,
 }
 
 local function rad(deg: number): number
@@ -3154,6 +3177,58 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 	)
 	barn(model, CFrame.new(origin + Vector3.new(-half + 26, 0, half - 26)), route.theme, 18, 14, 10)
 
+	-- Zona segura em volta da chegada e do portal de volta: guardião não entra.
+	local safeCenter = origin + Vector3.new(0, 0, half - 18)
+	local safe = decor(
+		block(
+			model,
+			Vector3.new(0.3, SAFE_RADIUS * 2, SAFE_RADIUS * 2),
+			CFrame.new(safeCenter + Vector3.new(0, 0.3, 0)) * CFrame.Angles(0, 0, rad(90)),
+			Color3.fromRGB(120, 215, 255),
+			Enum.Material.SmoothPlastic,
+			Enum.PartType.Cylinder
+		)
+	)
+	safe.Name = "ZonaSegura"
+	safe.Transparency = 0.35
+	decor(
+		block(
+			model,
+			Vector3.new(0.3, SAFE_RADIUS * 2 + 2, SAFE_RADIUS * 2 + 2),
+			CFrame.new(safeCenter + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, 0, rad(90)),
+			Color3.new(1, 1, 1),
+			Enum.Material.SmoothPlastic,
+			Enum.PartType.Cylinder
+		)
+	)
+	local safeSign = decor(block(model, Vector3.one, CFrame.new(safeCenter + Vector3.new(-SAFE_RADIUS + 4, 9, 0)), GRASS))
+	safeSign.Transparency = 1
+	textLabel(
+		billboard(safeSign, UDim2.fromScale(16, 3.5), Vector3.zero, 160),
+		"Titulo",
+		"🛡️ ZONA SEGURA",
+		UDim2.fromScale(1, 1),
+		UDim2.fromScale(0, 0),
+		Color3.fromRGB(150, 230, 255)
+	)
+
+	-- Trilha de pedras saindo da zona segura para o meio da rota.
+	local pathRng = Random.new(index * 31)
+	local toCenter = (origin - safeCenter).Unit
+	local sideways = Vector3.new(toCenter.Z, 0, -toCenter.X)
+	for step = 1, 9 do
+		local at = safeCenter + toCenter * (SAFE_RADIUS + step * 5) + sideways * pathRng:NextNumber(-1.2, 1.2)
+		decor(
+			block(
+				model,
+				Vector3.new(3.4, 0.4, 3.4),
+				CFrame.new(at + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, rad(pathRng:NextNumber(-20, 20)), 0),
+				Color3.fromRGB(215, 210, 200),
+				Enum.Material.Slate
+			)
+		)
+	end
+
 	local scenery = Instance.new("Folder")
 	scenery.Name = "Cenario"
 	scenery.Parent = model
@@ -3188,6 +3263,8 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 		spawn = spawn,
 		nodes = nodes,
 		returnField = returnField,
+		safeCenter = safeCenter,
+		safeRadius = SAFE_RADIUS,
 	}
 end
 
@@ -4153,6 +4230,14 @@ local function returnPortalPosition(routeId: string): Vector3?
 	return if field then (field :: BasePart).Position else nil
 end
 
+local function safeZonePosition(routeId: string): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	local safe = zone and zone:FindFirstChild("ZonaSegura")
+	return if safe then (safe :: BasePart).Position else nil
+end
+
 -- Materiais guardados + o que está na cesta: "se eu levar isso para casa, dá para evoluir?".
 local function withBasket(profile)
 	local ok, basket = pcall(HttpService.JSONDecode, HttpService, player:GetAttribute("CestaItens") or "{}")
@@ -4214,7 +4299,8 @@ function Guide.update()
 	local basket = player:GetAttribute("Cesta") or 0
 	local basketFull = basket >= (player:GetAttribute("CestaMax") or math.huge)
 	if chaser then
-		text = "🏃 Fuja do " .. chaser .. "!"
+		text = "🏃 Fuja para a zona segura!"
+		place = if zone then safeZonePosition(zone) else nil
 	elseif zone and basketFull then
 		text, place = "🧺 Cesta cheia! Volte para casa!", returnPortalPosition(zone)
 	elseif zone and basket > 0 and not canEvolveSomething(profile, coins) and canEvolveSomething(withBasket(profile), coins) then

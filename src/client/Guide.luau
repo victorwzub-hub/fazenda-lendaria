@@ -85,6 +85,14 @@ local function returnPortalPosition(routeId: string): Vector3?
 	return if field then (field :: BasePart).Position else nil
 end
 
+local function safeZonePosition(routeId: string): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	local safe = zone and zone:FindFirstChild("ZonaSegura")
+	return if safe then (safe :: BasePart).Position else nil
+end
+
 -- Materiais guardados + o que está na cesta: "se eu levar isso para casa, dá para evoluir?".
 local function withBasket(profile)
 	local ok, basket = pcall(HttpService.JSONDecode, HttpService, player:GetAttribute("CestaItens") or "{}")
@@ -146,7 +154,8 @@ function Guide.update()
 	local basket = player:GetAttribute("Cesta") or 0
 	local basketFull = basket >= (player:GetAttribute("CestaMax") or math.huge)
 	if chaser then
-		text = "🏃 Fuja do " .. chaser .. "!"
+		text = "🏃 Fuja para a zona segura!"
+		place = if zone then safeZonePosition(zone) else nil
 	elseif zone and basketFull then
 		text, place = "🧺 Cesta cheia! Volte para casa!", returnPortalPosition(zone)
 	elseif zone and basket > 0 and not canEvolveSomething(profile, coins) and canEvolveSomething(withBasket(profile), coins) then
