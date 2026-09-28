@@ -33,6 +33,7 @@ local GOLD = Color3.fromRGB(255, 205, 60)
 local zones = {}
 local rng = Random.new()
 local lastTouch: { [Player]: number } = {}
+local magnetic: { [Model]: { root: BasePart, take: (Player) -> boolean } } = {}
 
 function RouteService.isGoldenHour(): boolean
 	return (Workspace:GetAttribute("GoldenHourEnds") or 0) > Workspace:GetServerTimeNow()
@@ -301,25 +302,43 @@ local function spawnNode(routeId: string)
 	end)
 
 	local taken = false
-	prompt.Triggered:Connect(function(player)
+	local function take(player: Player): boolean
 		if taken then
-			return
+			return false
 		end
 		local profile = DataService.get(player)
 		if not profile or not profile.routes[routeId] then
-			return
+			return false
 		end
 		if not def.nest and Basket.space(player) <= 0 then
 			Notify.toast(player, "🧺 Cesta cheia! Volte para a fazenda para guardar", Color3.fromRGB(255, 120, 100))
-			return
+			return false
 		end
 		taken = true
+		magnetic[model] = nil
 		model:Destroy()
 		collect(player, route, def)
 		task.delay(rng:NextNumber(RESPAWN_MIN, RESPAWN_MAX), spawnNode, routeId)
-	end)
+		return true
+	end
+	prompt.Triggered:Connect(take)
 
+	-- Itens comuns podem ser puxados pelo boost de ímã.
+	if not def.nest and Materials.byId[def.material].tier <= 2 then
+		magnetic[model] = { root = root, take = take }
+	end
 	model.Parent = zone.nodes
+end
+
+-- Ímã: coleta sozinho os itens comuns perto do jogador. Devolve quantos pegou.
+function RouteService.pull(player: Player, position: Vector3, radius: number): number
+	local count = 0
+	for _, node in magnetic do
+		if (node.root.Position - position).Magnitude <= radius and node.take(player) then
+			count += 1
+		end
+	end
+	return count
 end
 
 function RouteService.travel(player: Player, target: string): (boolean, string?)

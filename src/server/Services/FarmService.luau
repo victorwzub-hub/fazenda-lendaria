@@ -1,5 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local AnimalModel = require(Shared.AnimalModel)
@@ -147,7 +148,8 @@ function FarmService.applySpeed(player: Player)
 	local profile = DataService.get(player)
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	if profile and humanoid then
-		humanoid.WalkSpeed = Balance.walkSpeed(profile)
+		local boosted = (player:GetAttribute("BoostVelocidade") or 0) > Workspace:GetServerTimeNow()
+		humanoid.WalkSpeed = Balance.walkSpeed(profile) + (if boosted then Balance.BOOST_SPEED else 0)
 	end
 end
 

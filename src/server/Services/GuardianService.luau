@@ -4,6 +4,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local AnimalModel = require(Shared.AnimalModel)
@@ -158,6 +159,11 @@ local function catch(guardian: Guardian, player: Player)
 	stopChase(guardian)
 	guardian.cooldownUntil = os.clock() + COOLDOWN
 	if not root then
+		return
+	end
+	-- Boost de escudo: o guardião bate e desiste, sem derrubar nada.
+	if (player:GetAttribute("BoostEscudo") or 0) > Workspace:GetServerTimeNow() then
+		Notify.toast(player, "🛡️ O escudo te protegeu do " .. guardian.def.name .. "!", Color3.fromRGB(255, 215, 70))
 		return
 	end
 	EffectRemote:FireClient(player, { kind = "knock", from = guardian.root.Position })

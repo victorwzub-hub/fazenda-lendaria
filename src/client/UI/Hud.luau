@@ -25,6 +25,14 @@ local rateLabel: TextLabel
 local luckLabel: TextLabel
 local basketLabel: TextLabel
 local basketScale: UIScale
+local boostLabels: { [string]: TextLabel } = {}
+
+-- Boosts ativos (mesmos ids do BoostService no servidor).
+local BOOSTS = {
+	{ id = "Velocidade", emoji = "👟", color = Color3.fromRGB(80, 200, 255) },
+	{ id = "Ima", emoji = "🧲", color = Color3.fromRGB(255, 90, 100) },
+	{ id = "Escudo", emoji = "🛡️", color = Color3.fromRGB(255, 215, 70) },
+}
 local goldenFrame: Frame
 local goldenLabel: TextLabel
 local objectiveLabel: TextLabel
@@ -215,6 +223,29 @@ function Hud.mount(gui: ScreenGui, scales: { UIScale }, menu: { MenuEntry })
 		Parent = money,
 	}, 2.5)
 	basketScale = Kit.new("UIScale", { Parent = basketLabel })
+
+	-- Linha dos boosts ativos, logo acima do dinheiro.
+	local boostLayout = Kit.list(14, true)
+	boostLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	local boostRow = Kit.new("Frame", {
+		Name = "Boosts",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(8, -46),
+		Size = UDim2.fromOffset(420, 42),
+		Parent = money,
+	}, { boostLayout })
+	for order, boost in BOOSTS do
+		boostLabels[boost.id] = bigText({
+			Text = boost.emoji,
+			TextSize = 30,
+			TextColor3 = boost.color,
+			Size = UDim2.fromOffset(0, 40),
+			AutomaticSize = Enum.AutomaticSize.X,
+			LayoutOrder = order,
+			Visible = false,
+			Parent = boostRow,
+		}, 3)
+	end
 	Kit.label({
 		Text = "💰",
 		TextSize = 56,
@@ -287,6 +318,15 @@ end
 
 function Hud.tick()
 	local player = Players.LocalPlayer
+	local now = Workspace:GetServerTimeNow()
+	for _, boost in BOOSTS do
+		local left = (player:GetAttribute("Boost" .. boost.id) or 0) - now
+		local label = boostLabels[boost.id]
+		label.Visible = left > 0
+		if left > 0 then
+			label.Text = boost.emoji .. " " .. math.ceil(left) .. "s"
+		end
+	end
 	Hud.setBasket(player:GetAttribute("Cesta") or 0, player:GetAttribute("CestaMax") or 20)
 	if State.profile then
 		rateLabel.Text = "+" .. Format.rate(State.production()) .. "/s"
