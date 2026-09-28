@@ -1,0 +1,5 @@
+node_modules/
+*.rbxl
+*.rbxm
+sourcemap.json
+.DS_Store

@@ -1,0 +1,93 @@
+-- Cada rota é uma ilha separada. Nós de coleta nascem aleatoriamente; "nest" é um ninho que dá um animal.
+local Routes = {}
+
+Routes.byId = {
+	Galinheiro = {
+		id = "Galinheiro",
+		name = "Rota do Galinheiro",
+		species = "Galinha",
+		origin = Vector3.new(2500, 0, 0),
+		size = 260,
+		ground = Color3.fromRGB(150, 195, 90),
+		groundMaterial = Enum.Material.Grass,
+		foliage = Color3.fromRGB(95, 165, 70),
+		theme = Color3.fromRGB(220, 70, 55),
+		requirement = nil,
+		unlockCost = 0,
+		nodeCount = 34,
+		nodes = {
+			{ material = "Semente", weight = 60, min = 1, max = 3 },
+			{ material = "Pena", weight = 28, min = 1, max = 2 },
+			{ material = "PenaDourada", weight = 7, min = 1, max = 1 },
+			{ material = "CristalEstelar", weight = 0.6, min = 1, max = 1 },
+			{ nest = true, weight = 4.4 },
+		},
+	},
+	Chiqueiro = {
+		id = "Chiqueiro",
+		name = "Rota do Chiqueiro",
+		species = "Porco",
+		origin = Vector3.new(5000, 0, 0),
+		size = 280,
+		ground = Color3.fromRGB(125, 95, 65),
+		groundMaterial = Enum.Material.Ground,
+		foliage = Color3.fromRGB(110, 150, 60),
+		theme = Color3.fromRGB(255, 130, 160),
+		requirement = { species = "Galinha", rarity = 3 },
+		unlockCost = 500,
+		nodeCount = 36,
+		nodes = {
+			{ material = "Cenoura", weight = 60, min = 1, max = 3 },
+			{ material = "Abobora", weight = 28, min = 1, max = 2 },
+			{ material = "Trufa", weight = 7, min = 1, max = 1 },
+			{ material = "CristalEstelar", weight = 0.7, min = 1, max = 1 },
+			{ nest = true, weight = 4.3 },
+		},
+	},
+	Pasto = {
+		id = "Pasto",
+		name = "Rota do Pasto",
+		species = "Vaca",
+		origin = Vector3.new(7500, 0, 0),
+		size = 300,
+		ground = Color3.fromRGB(95, 185, 75),
+		groundMaterial = Enum.Material.LeafyGrass,
+		foliage = Color3.fromRGB(60, 140, 55),
+		theme = Color3.fromRGB(70, 130, 230),
+		requirement = { species = "Porco", rarity = 3 },
+		unlockCost = 15000,
+		nodeCount = 38,
+		nodes = {
+			{ material = "Capim", weight = 60, min = 1, max = 3 },
+			{ material = "Trevo", weight = 28, min = 1, max = 2 },
+			{ material = "TrevoDaSorte", weight = 7, min = 1, max = 1 },
+			{ material = "CristalEstelar", weight = 0.8, min = 1, max = 1 },
+			{ nest = true, weight = 4.2 },
+		},
+	},
+	Pradaria = {
+		id = "Pradaria",
+		name = "Rota da Pradaria",
+		species = "Cavalo",
+		origin = Vector3.new(10000, 0, 0),
+		size = 320,
+		ground = Color3.fromRGB(200, 180, 100),
+		groundMaterial = Enum.Material.Grass,
+		foliage = Color3.fromRGB(150, 150, 60),
+		theme = Color3.fromRGB(255, 190, 40),
+		requirement = { species = "Vaca", rarity = 4 },
+		unlockCost = 250000,
+		nodeCount = 40,
+		nodes = {
+			{ material = "Feno", weight = 60, min = 1, max = 3 },
+			{ material = "Maca", weight = 28, min = 1, max = 2 },
+			{ material = "FerraduraDourada", weight = 7, min = 1, max = 1 },
+			{ material = "CristalEstelar", weight = 1, min = 1, max = 1 },
+			{ nest = true, weight = 4 },
+		},
+	},
+}
+
+Routes.order = { "Galinheiro", "Chiqueiro", "Pasto", "Pradaria" }
+
+return Routes

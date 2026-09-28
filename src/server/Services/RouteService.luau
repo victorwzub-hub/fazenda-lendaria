@@ -1,0 +1,399 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Balance = require(Shared.Balance)
+local Format = require(Shared.Format)
+local Materials = require(Shared.Config.Materials)
+local Rarities = require(Shared.Config.Rarities)
+local Routes = require(Shared.Config.Routes)
+local Species = require(Shared.Config.Species)
+
+local DataService = require(script.Parent.DataService)
+local FarmService = require(script.Parent.FarmService)
+local Notify = require(script.Parent.Notify)
+local PassService = require(script.Parent.PassService)
+local Teleport = require(script.Parent.Teleport)
+
+local RouteService = {}
+
+local GOLDEN_INTERVAL = 12 * 60
+local GOLDEN_DURATION = 2 * 60
+local GOLDEN_RARE_BOOST = 3
+local RESPAWN_MIN, RESPAWN_MAX = 6, 14
+local TOUCH_COOLDOWN = 2
+local SPARKLES = "rbxasset://textures/particles/sparkles_main.dds"
+local GOLD = Color3.fromRGB(255, 205, 60)
+
+local zones = {}
+local rng = Random.new()
+local lastTouch: { [Player]: number } = {}
+
+function RouteService.isGoldenHour(): boolean
+	return (Workspace:GetAttribute("GoldenHourEnds") or 0) > Workspace:GetServerTimeNow()
+end
+
+local function piece(
+	model: Model,
+	size: Vector3,
+	cframe: CFrame,
+	color: Color3,
+	material: Enum.Material,
+	shape: Enum.PartType?
+): Part
+	local part = Instance.new("Part")
+	if shape then
+		part.Shape = shape
+	end
+	part.Size = size
+	part.CFrame = cframe
+	part.Color = color
+	part.Material = material
+	part.Anchored = true
+	part.CanCollide = false
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.Parent = model
+	return part
+end
+
+local function glow(part: BasePart, color: Color3, rate: number)
+	local light = Instance.new("PointLight")
+	light.Color = color
+	light.Range = 10
+	light.Brightness = 1.5
+	light.Parent = part
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Texture = SPARKLES
+	emitter.Color = ColorSequence.new(color)
+	emitter.LightEmission = 1
+	emitter.Rate = rate
+	emitter.Lifetime = NumberRange.new(0.8, 1.5)
+	emitter.Speed = NumberRange.new(0.5, 1.5)
+	emitter.SpreadAngle = Vector2.new(180, 180)
+	emitter.Size = NumberSequence.new(0.35, 0)
+	emitter.Parent = part
+end
+
+local function buildNode(def, route): (Model, BasePart)
+	local model = Instance.new("Model")
+	local root: BasePart
+	if def.nest then
+		model.Name = "Ninho"
+		root = piece(
+			model,
+			Vector3.new(1.2, 5, 5),
+			CFrame.new(0, 0.6, 0) * CFrame.Angles(0, 0, math.rad(90)),
+			Color3.fromRGB(205, 170, 95),
+			Enum.Material.Fabric,
+			Enum.PartType.Cylinder
+		)
+		local egg = piece(
+			model,
+			Vector3.one * 1.9,
+			CFrame.new(0, 1.8, 0),
+			Color3.fromRGB(255, 246, 225),
+			Enum.Material.SmoothPlastic,
+			Enum.PartType.Ball
+		)
+		piece(
+			model,
+			Vector3.one * 0.5,
+			CFrame.new(0.55, 2.2, -0.6),
+			route.theme,
+			Enum.Material.SmoothPlastic,
+			Enum.PartType.Ball
+		)
+		piece(
+			model,
+			Vector3.one * 0.4,
+			CFrame.new(-0.6, 1.6, -0.55),
+			route.theme,
+			Enum.Material.SmoothPlastic,
+			Enum.PartType.Ball
+		)
+		glow(egg, route.theme, 4)
+	else
+		local material = Materials.byId[def.material]
+		model.Name = material.name
+		if material.tier == 1 then
+			root = piece(
+				model,
+				Vector3.one * 2.8,
+				CFrame.new(0, 1, 0),
+				route.foliage,
+				Enum.Material.Grass,
+				Enum.PartType.Ball
+			)
+			for i = 0, 2 do
+				local angle = i * math.pi * 2 / 3
+				piece(
+					model,
+					Vector3.one * 0.8,
+					CFrame.new(math.cos(angle) * 0.9, 2.2, math.sin(angle) * 0.9),
+					material.color,
+					Enum.Material.SmoothPlastic,
+					Enum.PartType.Ball
+				)
+			end
+		elseif material.tier == 2 then
+			root = piece(
+				model,
+				Vector3.one * 2.4,
+				CFrame.new(0, 1.2, 0),
+				Color3.fromRGB(165, 118, 70),
+				Enum.Material.WoodPlanks
+			)
+			piece(
+				model,
+				Vector3.new(2.5, 0.45, 2.5),
+				CFrame.new(0, 2.3, 0),
+				material.color,
+				Enum.Material.SmoothPlastic
+			)
+		elseif material.tier == 3 then
+			root = piece(
+				model,
+				Vector3.new(2.4, 1.2, 2.4),
+				CFrame.new(0, 0.6, 0) * CFrame.Angles(0, math.rad(20), 0),
+				Color3.fromRGB(120, 120, 130),
+				Enum.Material.Slate
+			)
+			local gem = piece(
+				model,
+				Vector3.one * 1.4,
+				CFrame.new(0, 1.9, 0),
+				material.color,
+				Enum.Material.Neon,
+				Enum.PartType.Ball
+			)
+			glow(gem, material.color, 5)
+		else
+			root = piece(
+				model,
+				Vector3.new(1.1, 4, 1.1),
+				CFrame.new(0, 1.8, 0) * CFrame.Angles(0, math.rad(45), math.rad(8)),
+				material.color,
+				Enum.Material.Neon
+			)
+			piece(
+				model,
+				Vector3.new(0.7, 2.4, 0.7),
+				CFrame.new(0.9, 1.1, 0.3) * CFrame.Angles(0, 0, math.rad(-25)),
+				material.color,
+				Enum.Material.Neon
+			)
+			piece(
+				model,
+				Vector3.new(0.6, 2, 0.6),
+				CFrame.new(-0.8, 1, -0.4) * CFrame.Angles(math.rad(20), 0, math.rad(22)),
+				material.color,
+				Enum.Material.Neon
+			)
+			glow(root, material.color, 10)
+		end
+	end
+	model.WorldPivot = CFrame.identity
+	return model, root
+end
+
+local function pickDef(route, golden: boolean)
+	local weights = {}
+	for i, def in route.nodes do
+		local boosted = def.nest or Materials.byId[def.material].tier >= 3
+		weights[i] = def.weight * (if golden and boosted then GOLDEN_RARE_BOOST else 1)
+	end
+	return route.nodes[Balance.pickWeighted(weights, rng:NextNumber())]
+end
+
+local function randomNodeCFrame(zone): CFrame
+	local half = zone.size / 2 - 10
+	local spawnFlat = Vector3.new(zone.spawn.Position.X, 0, zone.spawn.Position.Z)
+	local barnFlat = zone.origin + Vector3.new(-zone.size / 2 + 26, 0, zone.size / 2 - 26)
+	local point = zone.origin
+	for _ = 1, 30 do
+		point = zone.origin + Vector3.new(rng:NextNumber(-half, half), 0, rng:NextNumber(-half, half))
+		if (point - spawnFlat).Magnitude > 30 and (point - barnFlat).Magnitude > 16 then
+			break
+		end
+	end
+	return CFrame.new(point) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
+end
+
+local function collect(player: Player, route, def): boolean
+	local profile = DataService.get(player)
+	if not profile or not profile.routes[route.id] then
+		return false
+	end
+	local luck = Balance.luck(profile, PassService.has(player, "SorteDupla"), RouteService.isGoldenHour())
+
+	if def.nest then
+		local rarity = Balance.rollRarity(luck, rng)
+		local shiny = Balance.rollShiny(luck, rng)
+		profile.stats.nests += 1
+		local animal, soldFor = FarmService.addAnimal(player, route.species, rarity, shiny)
+		local shown = animal or { id = "", species = route.species, rarity = rarity, shiny = shiny }
+		Notify.reveal(player, {
+			title = "🥚 NINHO ABERTO!",
+			name = Balance.animalName(shown),
+			color = Rarities.list[rarity].color,
+			sub = if soldFor
+				then "Fazenda cheia! Vendido por 🪙 " .. Format.number(soldFor) .. " — aumente a fazenda na 🛒 Loja"
+				else "Foi para a sua fazenda: +🪙 " .. Format.rate(Balance.animalProduction(shown)) .. "/s",
+		})
+		return true
+	end
+
+	local material = Materials.byId[def.material]
+	local amount = rng:NextInteger(def.min, def.max)
+	local doubled = rng:NextNumber() < Balance.doubleDropChance(luck)
+	if doubled then
+		amount *= 2
+	end
+	DataService.addMaterial(player, def.material, amount)
+	profile.stats.collected += 1
+	DataService.push(player)
+	if material.tier >= 4 then
+		Notify.big(
+			player,
+			"💎 CRISTAL ESTELAR!",
+			"Material ultra-raro usado para criar animais Míticos",
+			material.color
+		)
+	else
+		Notify.toast(
+			player,
+			"+" .. amount .. " " .. material.emoji .. " " .. material.name .. (if doubled then "   🍀 x2!" else ""),
+			material.color
+		)
+	end
+	return true
+end
+
+local function spawnNode(routeId: string)
+	local zone = zones[routeId]
+	local route = Routes.byId[routeId]
+	local def = pickDef(route, RouteService.isGoldenHour())
+	local model, root = buildNode(def, route)
+	model:PivotTo(randomNodeCFrame(zone))
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = if def.nest then "Abrir ninho" else "Coletar"
+	prompt.ObjectText = model.Name
+	prompt.HoldDuration = if def.nest then 1 elseif Materials.byId[def.material].tier >= 3 then 0.6 else 0.3
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = root
+
+	local taken = false
+	prompt.Triggered:Connect(function(player)
+		if taken then
+			return
+		end
+		local profile = DataService.get(player)
+		if not profile or not profile.routes[routeId] then
+			return
+		end
+		taken = true
+		model:Destroy()
+		collect(player, route, def)
+		task.delay(rng:NextNumber(RESPAWN_MIN, RESPAWN_MAX), spawnNode, routeId)
+	end)
+
+	model.Parent = zone.nodes
+end
+
+function RouteService.travel(player: Player, target: string): (boolean, string?)
+	if target == "Fazenda" then
+		return FarmService.teleportHome(player)
+	end
+	local route = Routes.byId[target]
+	local profile = DataService.get(player)
+	if not route or not profile then
+		return false, "Rota inválida"
+	end
+	if not profile.routes[target] then
+		return false,
+			"🔒 " .. route.name .. ": precisa de " .. Balance.requirementText(target) .. " + 🪙 " .. Format.number(
+				route.unlockCost
+			) .. ". Desbloqueie no menu 🗺️ Rotas"
+	end
+	Teleport.to(player, zones[target].spawn)
+	local species = Species.byId[route.species]
+	Notify.big(
+		player,
+		species.emoji .. " " .. route.name,
+		"Colete materiais e procure ninhos de " .. species.name .. "!",
+		route.theme
+	)
+	return true, nil
+end
+
+function RouteService.unlock(player: Player, routeId: string): (boolean, string?)
+	local profile = DataService.get(player)
+	local ok, reason = Balance.canUnlockRoute(profile, profile.coins, routeId)
+	if not ok then
+		return false, reason
+	end
+	local route = Routes.byId[routeId]
+	if not DataService.spendCoins(player, route.unlockCost) then
+		return false, "Moedas insuficientes"
+	end
+	profile.routes[routeId] = true
+	DataService.push(player)
+	Notify.big(
+		player,
+		"🔓 " .. route.name .. " desbloqueada!",
+		"Entre no portal ou toque em Ir no menu de rotas",
+		route.theme
+	)
+	return true, nil
+end
+
+local function onPortalTouched(hit: BasePart, target: string)
+	local player = Players:GetPlayerFromCharacter(hit.Parent)
+	if not player then
+		return
+	end
+	local now = os.clock()
+	if lastTouch[player] and now - lastTouch[player] < TOUCH_COOLDOWN then
+		return
+	end
+	lastTouch[player] = now
+	local ok, message = RouteService.travel(player, target)
+	if not ok and message then
+		Notify.toast(player, message, Color3.fromRGB(255, 120, 100))
+	end
+end
+
+function RouteService.init(zoneMap, portals: { [string]: BasePart })
+	zones = zoneMap
+	for routeId, zone in zones do
+		for _ = 1, Routes.byId[routeId].nodeCount do
+			spawnNode(routeId)
+		end
+		zone.returnField.Touched:Connect(function(hit)
+			onPortalTouched(hit, "Fazenda")
+		end)
+	end
+	for routeId, field in portals do
+		field.Touched:Connect(function(hit)
+			onPortalTouched(hit, routeId)
+		end)
+	end
+
+	Players.PlayerRemoving:Connect(function(player)
+		lastTouch[player] = nil
+	end)
+
+	task.spawn(function()
+		while true do
+			task.wait(GOLDEN_INTERVAL)
+			Workspace:SetAttribute("GoldenHourEnds", Workspace:GetServerTimeNow() + GOLDEN_DURATION)
+			Notify.bigAll("🌟 HORA DOURADA! 🌟", "Sorte x2 e itens raros aparecendo mais por 2 minutos!", GOLD)
+		end
+	end)
+end
+
+return RouteService
