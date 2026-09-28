@@ -3,7 +3,7 @@ local Materials = {}
 
 Materials.byId = {
 	Semente = { name = "Semente", emoji = "🌱", color = Color3.fromRGB(190, 145, 90), tier = 1 },
-	Pena = { name = "Pena", emoji = "🪶", color = Color3.fromRGB(245, 245, 245), tier = 2 },
+	Pena = { name = "Pena", emoji = "🕊️", color = Color3.fromRGB(245, 245, 245), tier = 2 },
 	PenaDourada = { name = "Pena Dourada", emoji = "✨", color = Color3.fromRGB(255, 205, 60), tier = 3 },
 
 	Cenoura = { name = "Cenoura", emoji = "🥕", color = Color3.fromRGB(255, 140, 40), tier = 1 },

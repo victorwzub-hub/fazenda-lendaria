@@ -25,7 +25,7 @@ local function sorted(animals)
 end
 
 local function materialLine(profile, cost): (string, boolean)
-	local parts = { "🪙 " .. Format.number(cost.coins) }
+	local parts = { "💰 " .. Format.number(cost.coins) }
 	local enough = true
 	for _, materialId in Materials.order do
 		local need = cost.materials[materialId]
@@ -47,7 +47,7 @@ local function materialLine(profile, cost): (string, boolean)
 end
 
 local function sellButton(parent: Instance, animal, ctx)
-	local price = "Vender 🪙 " .. Format.number(Balance.sellPrice(animal))
+	local price = "Vender 💰 " .. Format.number(Balance.sellPrice(animal))
 	local armed = false
 	local button: TextButton
 	button = Kit.button(price, Kit.colors.yellow, function()
@@ -81,7 +81,7 @@ return function(content: Frame, profile, ctx)
 		Parent = header,
 	})
 	Kit.label({
-		Text = "🪙 " .. Format.rate(State.production()) .. " por segundo",
+		Text = "💰 " .. Format.rate(State.production()) .. " por segundo",
 		Font = Enum.Font.FredokaOne,
 		TextSize = 21,
 		TextXAlignment = Enum.TextXAlignment.Right,
@@ -123,7 +123,7 @@ return function(content: Frame, profile, ctx)
 			Parent = card,
 		})
 		Kit.label({
-			Text = "Produz 🪙 " .. Format.rate(Balance.animalProduction(animal)) .. "/s",
+			Text = "Produz 💰 " .. Format.rate(Balance.animalProduction(animal)) .. "/s",
 			TextColor3 = Kit.colors.muted,
 			TextSize = 15,
 			Position = UDim2.fromOffset(74, 34),
@@ -159,7 +159,7 @@ return function(content: Frame, profile, ctx)
 				local line, materialsOk = materialLine(profile, cost)
 				Kit.label({
 					RichText = true,
-					Text = "➜ " .. Kit.hex(Kit.darken(nextRarity.color, 0.25), nextName) .. "\n" .. line,
+					Text = "▶ " .. Kit.hex(Kit.darken(nextRarity.color, 0.25), nextName) .. "\n" .. line,
 					TextSize = 14,
 					TextYAlignment = Enum.TextYAlignment.Top,
 					Position = UDim2.fromOffset(74, 56),

@@ -82,7 +82,7 @@ return function(content: Frame, profile, ctx)
 			Kit.button("MÁXIMO ⭐", Kit.colors.gray, function() end, buttonProps)
 		else
 			local cost = Upgrades.cost(upgradeId, level)
-			local buy = Kit.button("🪙 " .. Format.number(cost), Kit.colors.gray, function()
+			local buy = Kit.button("💰 " .. Format.number(cost), Kit.colors.gray, function()
 				ctx.act("BuyUpgrade", upgradeId)
 			end, buttonProps)
 			ctx.track(buy, cost, function(affordable)

@@ -1,23 +1,22 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Balance = require(Shared.Balance)
 local Format = require(Shared.Format)
-local Rarities = require(Shared.Config.Rarities)
-local Routes = require(Shared.Config.Routes)
-local Species = require(Shared.Config.Species)
+local Style = require(Shared.Style)
 
 local Kit = require(script.Parent.Kit)
 local State = require(script.Parent.Parent.State)
 
-export type MenuEntry = { emoji: string, label: string, color: Color3, onClick: () -> () }
+export type MenuEntry = { id: string, emoji: string, label: string, color: Color3, onClick: () -> () }
 
 local Hud = {}
 
 local GOLD = Color3.fromRGB(255, 205, 60)
-local DARK = Color3.fromRGB(40, 30, 20)
+local MONEY = Color3.fromRGB(95, 235, 70)
+local BUTTON_SIZE = Vector2.new(196, 62)
 
 local coinsLabel: TextLabel
 local coinsScale: UIScale
@@ -26,198 +25,252 @@ local luckLabel: TextLabel
 local goldenFrame: Frame
 local goldenLabel: TextLabel
 local objectiveLabel: TextLabel
+local objectiveScale: UIScale
 
-local function pill(parent: Instance, props: { [string]: any }, strokeColor: Color3): Frame
-	local frame = Kit.new("Frame", {
-		BackgroundColor3 = DARK,
-		BackgroundTransparency = 0.2,
-		Parent = parent,
-	}, { Kit.corner(22), Kit.stroke(strokeColor, 3) })
-	for key, value in props do
-		(frame :: any)[key] = value
-	end
-	return frame
+type MenuButton = { button: TextButton, pointer: TextLabel, badge: Frame }
+local buttons: { [string]: MenuButton } = {}
+local pointed: string? = nil
+
+-- Texto grande com contorno preto, o "jeito simulador" de escrever.
+local function bigText(props: { [string]: any }, outline: number?): TextLabel
+	local label = Kit.label(props)
+	label.Font = Enum.Font.FredokaOne
+	label.TextWrapped = false
+	Style.outline(label, outline or 3)
+	return label
 end
 
-local function objective(profile): string
-	if (profile.stats.collected or 0) == 0 then
-		return "Entre no portal 🐔 Rota do Galinheiro (perto do poço) e colete itens"
+local function menuButton(parent: Instance, entry: MenuEntry, order: number): MenuButton
+	local button = Kit.button("", entry.color, entry.onClick, {
+		Name = entry.id,
+		Size = UDim2.fromOffset(BUTTON_SIZE.X, BUTTON_SIZE.Y),
+		LayoutOrder = order,
+		Parent = parent,
+	})
+	-- Botão "gordinho": claro em cima, escuro embaixo, borda escura grossa.
+	local stroke = button:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Thickness = 3.5
+		stroke.Color = Kit.darken(entry.color, 0.55)
 	end
-	for _, routeId in Routes.order do
-		if not profile.routes[routeId] then
-			local route = Routes.byId[routeId]
-			local req = route.requirement
-			if req and not Balance.hasAnimal(profile, req.species, req.rarity) then
-				return "Evolua até ter " .. Balance.requirementText(routeId) .. " para liberar a " .. route.name
-			end
-			return "Libere a "
-				.. route.name
-				.. " por 🪙 "
-				.. Format.number(route.unlockCost)
-				.. " no menu 🗺️ Rotas"
-		end
-	end
-	for _, speciesId in Species.order do
-		if not Balance.hasAnimal(profile, speciesId, Rarities.LEGENDARY) then
-			local species = Species.byId[speciesId]
-			return "Consiga "
-				.. species.emoji
-				.. " "
-				.. species.name
-				.. " "
-				.. Rarities.label(Rarities.LEGENDARY, species.feminine)
-		end
-	end
-	return "Complete o 📖 Índice: encontre todos os animais Míticos!"
+	Kit.new("UIGradient", {
+		Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(175, 175, 175)),
+		Rotation = 90,
+		Parent = button,
+	})
+	Kit.label({
+		Text = entry.emoji,
+		TextSize = 38,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Position = UDim2.fromOffset(6, 0),
+		Size = UDim2.new(0, 52, 1, 0),
+		Parent = button,
+	})
+	bigText({
+		Text = entry.label,
+		TextSize = 30,
+		TextColor3 = Kit.colors.white,
+		Position = UDim2.fromOffset(62, 0),
+		Size = UDim2.new(1, -66, 1, 0),
+		Parent = button,
+	}, 2.5)
+
+	local badge = Kit.new("Frame", {
+		BackgroundColor3 = Kit.colors.red,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, -4, 0, 4),
+		Size = UDim2.fromOffset(30, 30),
+		Visible = false,
+		ZIndex = 3,
+		Parent = button,
+	}, { Kit.corner(15), Kit.stroke(Color3.new(1, 1, 1), 2.5) })
+	bigText({
+		Text = "!",
+		TextSize = 24,
+		TextColor3 = Kit.colors.white,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 3,
+		Parent = badge,
+	}, 2)
+
+	local pointer = bigText({
+		Text = "◀",
+		TextSize = 44,
+		TextColor3 = GOLD,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(1, 10, 0.5, 0),
+		Size = UDim2.fromOffset(50, 50),
+		Visible = false,
+		Parent = button,
+	}, 3)
+
+	return { button = button, pointer = pointer, badge = badge }
 end
 
 function Hud.mount(gui: ScreenGui, scales: { UIScale }, menu: { MenuEntry })
+	-- Topo: objetivo em letras grandes, como "Quebre um ovo".
 	local top = Kit.new("Frame", {
 		Name = "Topo",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 6),
-		Size = UDim2.fromOffset(640, 120),
+		Position = UDim2.new(0.5, 0, 0, 8),
+		Size = UDim2.fromOffset(760, 130),
 		Parent = gui,
 	})
 	table.insert(scales, Kit.new("UIScale", { Parent = top }))
 
-	local coins = pill(top, {
+	objectiveLabel = bigText({
+		Text = "",
+		TextSize = 44,
+		TextColor3 = Kit.colors.white,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		BackgroundColor3 = Color3.fromRGB(20, 12, 8),
+		BackgroundTransparency = 0.55,
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.fromScale(0.5, 0),
-		Size = UDim2.fromOffset(250, 68),
-	}, GOLD)
-	coinsLabel = Kit.label({
-		Text = "🪙 0",
-		Font = Enum.Font.FredokaOne,
-		TextSize = 32,
-		TextColor3 = Kit.colors.white,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Position = UDim2.fromOffset(0, 4),
-		Size = UDim2.new(1, 0, 0, 38),
-		Parent = coins,
+		Size = UDim2.fromOffset(0, 64),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Parent = top,
+	}, 4)
+	Kit.corner(14).Parent = objectiveLabel
+	Kit.new("UIPadding", {
+		PaddingLeft = UDim.new(0, 26),
+		PaddingRight = UDim.new(0, 26),
+		Parent = objectiveLabel,
 	})
-	coinsScale = Kit.new("UIScale", { Parent = coinsLabel })
-	rateLabel = Kit.label({
-		Text = "+0/s",
-		TextSize = 15,
-		TextColor3 = GOLD,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Position = UDim2.fromOffset(0, 42),
-		Size = UDim2.new(1, 0, 0, 20),
-		Parent = coins,
-	})
+	objectiveScale = Kit.new("UIScale", { Parent = objectiveLabel })
 
-	local luck = pill(top, {
-		AnchorPoint = Vector2.new(0, 0),
-		Position = UDim2.new(0.5, 135, 0, 13),
-		Size = UDim2.fromOffset(130, 42),
-	}, Color3.fromRGB(90, 220, 110))
-	luckLabel = Kit.label({
-		Text = "🍀 x1.00",
-		Font = Enum.Font.FredokaOne,
-		TextSize = 20,
-		TextColor3 = Kit.colors.white,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.fromScale(1, 1),
-		Parent = luck,
-	})
-
-	goldenFrame = pill(top, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(0.5, -135, 0, 13),
-		Size = UDim2.fromOffset(170, 42),
+	goldenFrame = Kit.new("Frame", {
 		BackgroundColor3 = Color3.fromRGB(120, 80, 10),
+		BackgroundTransparency = 0.15,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromOffset(380, 76),
+		Size = UDim2.fromOffset(260, 44),
 		Visible = false,
-	}, GOLD)
-	goldenLabel = Kit.label({
+		Parent = top,
+	}, { Kit.corner(22), Kit.stroke(GOLD, 3) })
+	goldenLabel = bigText({
 		Text = "🌟 0:00",
-		Font = Enum.Font.FredokaOne,
-		TextSize = 19,
+		TextSize = 26,
 		TextColor3 = GOLD,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Size = UDim2.fromScale(1, 1),
 		Parent = goldenFrame,
-	})
+	}, 2.5)
 
-	objectiveLabel = Kit.label({
-		Text = "",
-		TextSize = 15,
-		TextColor3 = Kit.colors.white,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextWrapped = false,
-		BackgroundColor3 = DARK,
-		BackgroundTransparency = 0.35,
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 78),
-		Size = UDim2.fromOffset(0, 30),
-		AutomaticSize = Enum.AutomaticSize.X,
-		Parent = top,
-	})
-	Kit.corner(15).Parent = objectiveLabel
-	Kit.new("UIPadding", {
-		PaddingLeft = UDim.new(0, 14),
-		PaddingRight = UDim.new(0, 14),
-		Parent = objectiveLabel,
-	})
-
-	local menuLayout = Kit.list(8)
+	-- Esquerda: botões grandes com ícone e nome.
+	local menuLayout = Kit.list(10)
+	menuLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	menuLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 	local menuFrame = Kit.new("Frame", {
 		Name = "Menu",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 10, 0.5, 0),
-		Size = UDim2.fromOffset(84, #menu * 86),
+		Position = UDim2.new(0, 14, 0.5, -20),
+		Size = UDim2.fromOffset(BUTTON_SIZE.X + 70, #menu * (BUTTON_SIZE.Y + 10)),
 		Parent = gui,
 	}, { menuLayout })
 	table.insert(scales, Kit.new("UIScale", { Parent = menuFrame }))
-
 	for order, entry in menu do
-		local button = Kit.button("", entry.color, entry.onClick, {
-			Size = UDim2.fromOffset(80, 78),
-			LayoutOrder = order,
-			Parent = menuFrame,
-		})
-		Kit.label({
-			Text = entry.emoji,
-			TextSize = 32,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			Position = UDim2.fromOffset(0, 6),
-			Size = UDim2.new(1, 0, 0, 40),
-			Parent = button,
-		})
-		Kit.label({
-			Text = entry.label,
-			Font = Enum.Font.FredokaOne,
-			TextSize = 15,
-			TextColor3 = Kit.colors.white,
-			TextStrokeTransparency = 0.5,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			Position = UDim2.fromOffset(0, 50),
-			Size = UDim2.new(1, 0, 0, 22),
-			Parent = button,
-		})
+		buttons[entry.id] = menuButton(menuFrame, entry, order)
 	end
+
+	-- Canto de baixo: dinheiro enorme e verde.
+	local money = Kit.new("Frame", {
+		Name = "Dinheiro",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 16, 1, -14),
+		Size = UDim2.fromOffset(420, 112),
+		Parent = gui,
+	})
+	table.insert(scales, Kit.new("UIScale", { Parent = money }))
+	rateLabel = bigText({
+		Text = "+0/s",
+		TextSize = 26,
+		TextColor3 = MONEY,
+		Position = UDim2.fromOffset(8, 0),
+		Size = UDim2.fromOffset(200, 32),
+		Parent = money,
+	}, 2.5)
+	luckLabel = bigText({
+		Text = "🍀 x1.00",
+		TextSize = 26,
+		TextColor3 = Kit.colors.white,
+		Position = UDim2.fromOffset(210, 0),
+		Size = UDim2.fromOffset(200, 32),
+		Parent = money,
+	}, 2.5)
+	Kit.label({
+		Text = "💰",
+		TextSize = 56,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Position = UDim2.fromOffset(0, 36),
+		Size = UDim2.fromOffset(72, 72),
+		Parent = money,
+	})
+	coinsLabel = bigText({
+		Text = "0",
+		TextSize = 60,
+		TextColor3 = MONEY,
+		Position = UDim2.fromOffset(78, 36),
+		Size = UDim2.fromOffset(340, 72),
+		Parent = money,
+	}, 4.5)
+	coinsScale = Kit.new("UIScale", { Parent = coinsLabel })
+
+	-- A setinha do botão apontado fica pulando para chamar atenção.
+	RunService.RenderStepped:Connect(function()
+		if not pointed then
+			return
+		end
+		local entry = buttons[pointed]
+		if entry then
+			local bounce = math.abs(math.sin(os.clock() * 6)) * 14
+			entry.pointer.Position = UDim2.new(1, 10 + bounce, 0.5, 0)
+		end
+	end)
 end
 
 function Hud.setCoins(value: number)
-	coinsLabel.Text = "🪙 " .. Format.number(value)
-	coinsScale.Scale = 1.08
+	coinsLabel.Text = Format.number(value)
+	coinsScale.Scale = 1.1
 	TweenService:Create(coinsScale, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 end
 
+function Hud.setObjective(text: string)
+	if objectiveLabel.Text == text then
+		return
+	end
+	objectiveLabel.Text = text
+	objectiveScale.Scale = 1.25
+	TweenService:Create(objectiveScale, TweenInfo.new(0.4, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+end
+
+-- Aponta um botão do menu (ou nenhum, com nil): seta pulando + bolinha "!".
+function Hud.point(id: string?)
+	if pointed == id then
+		return
+	end
+	for buttonId, entry in buttons do
+		local active = buttonId == id
+		entry.pointer.Visible = active
+		entry.badge.Visible = active
+	end
+	pointed = id
+end
+
 function Hud.tick()
-	local profile = State.profile
-	if profile then
-		rateLabel.Text = "+" .. Format.rate(State.production()) .. " por segundo"
+	if State.profile then
+		rateLabel.Text = "+" .. Format.rate(State.production()) .. "/s"
 		luckLabel.Text = string.format("🍀 x%.2f", State.luck())
-		objectiveLabel.Text = "🎯 " .. objective(profile)
 	end
 	local golden = State.isGoldenHour()
 	goldenFrame.Visible = golden
 	if golden then
-		goldenLabel.Text = "🌟 Dourada " .. Format.time(State.goldenHourEnds() - Workspace:GetServerTimeNow())
+		goldenLabel.Text = "🌟 Hora Dourada " .. Format.time(State.goldenHourEnds() - Workspace:GetServerTimeNow())
 	end
 end
 

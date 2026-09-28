@@ -6,6 +6,7 @@ local Remotes = require(ReplicatedStorage:WaitForChild("Shared").Remotes)
 
 local State = require(script.State)
 local World = require(script.World)
+local Guide = require(script.Guide)
 local Hud = require(script.UI.Hud)
 local Kit = require(script.UI.Kit)
 local Notifications = require(script.UI.Notifications)
@@ -77,6 +78,7 @@ end
 
 Hud.mount(gui, scales, {
 	{
+		id = "Animais",
 		emoji = "🐔",
 		label = "Animais",
 		color = Kit.colors.green,
@@ -85,6 +87,7 @@ Hud.mount(gui, scales, {
 		end,
 	},
 	{
+		id = "Rotas",
 		emoji = "🗺️",
 		label = "Rotas",
 		color = Kit.colors.blue,
@@ -93,6 +96,7 @@ Hud.mount(gui, scales, {
 		end,
 	},
 	{
+		id = "Loja",
 		emoji = "🛒",
 		label = "Loja",
 		color = Kit.colors.yellow,
@@ -101,6 +105,7 @@ Hud.mount(gui, scales, {
 		end,
 	},
 	{
+		id = "Indice",
 		emoji = "📖",
 		label = "Índice",
 		color = Color3.fromRGB(165, 100, 225),
@@ -109,6 +114,7 @@ Hud.mount(gui, scales, {
 		end,
 	},
 	{
+		id = "Mochila",
 		emoji = "🎒",
 		label = "Mochila",
 		color = Color3.fromRGB(180, 120, 70),
@@ -117,6 +123,7 @@ Hud.mount(gui, scales, {
 		end,
 	},
 	{
+		id = "Fazenda",
 		emoji = "🏡",
 		label = "Fazenda",
 		color = Color3.fromRGB(120, 170, 70),
@@ -163,8 +170,10 @@ end)
 
 State.start()
 World.start()
+Guide.start()
 
 while true do
 	Hud.tick()
+	Guide.update()
 	task.wait(0.5)
 end

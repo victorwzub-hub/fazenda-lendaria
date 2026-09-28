@@ -54,7 +54,7 @@ return function(content: Frame, profile, ctx)
 		})
 
 		if unlocked then
-			Kit.button("Ir agora ➜", route.theme, function()
+			Kit.button("Ir agora ▶", route.theme, function()
 				local ok = ctx.act("Travel", routeId)
 				if ok then
 					ctx.close()
@@ -80,7 +80,7 @@ return function(content: Frame, profile, ctx)
 				Size = UDim2.new(1, -200, 0, 24),
 				Parent = card,
 			})
-			local unlock = Kit.button("🔓 🪙 " .. Format.number(route.unlockCost), Kit.colors.gray, function()
+			local unlock = Kit.button("🔓 💰 " .. Format.number(route.unlockCost), Kit.colors.gray, function()
 				ctx.act("UnlockRoute", routeId)
 			end, {
 				AnchorPoint = Vector2.new(1, 0.5),

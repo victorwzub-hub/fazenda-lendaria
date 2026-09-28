@@ -9,6 +9,7 @@ local Materials = require(Shared.Config.Materials)
 local Rarities = require(Shared.Config.Rarities)
 local Routes = require(Shared.Config.Routes)
 local Species = require(Shared.Config.Species)
+local Style = require(Shared.Style)
 
 local DataService = require(script.Parent.DataService)
 local FarmService = require(script.Parent.FarmService)
@@ -195,6 +196,7 @@ local function buildNode(def, route): (Model, BasePart)
 		end
 	end
 	model.WorldPivot = CFrame.identity
+	Style.apply(model)
 	return model, root
 end
 
@@ -239,8 +241,8 @@ local function collect(player: Player, route, def): boolean
 			name = Balance.animalName(shown),
 			color = Rarities.list[rarity].color,
 			sub = if soldFor
-				then "Fazenda cheia! Vendido por 🪙 " .. Format.number(soldFor) .. " — aumente a fazenda na 🛒 Loja"
-				else "Foi para a sua fazenda: +🪙 " .. Format.rate(Balance.animalProduction(shown)) .. "/s",
+				then "Fazenda cheia! Vendido por 💰 " .. Format.number(soldFor) .. " — aumente a fazenda na 🛒 Loja"
+				else "Foi para a sua fazenda: +💰 " .. Format.rate(Balance.animalProduction(shown)) .. "/s",
 		})
 		return true
 	end
@@ -315,7 +317,7 @@ function RouteService.travel(player: Player, target: string): (boolean, string?)
 	end
 	if not profile.routes[target] then
 		return false,
-			"🔒 " .. route.name .. ": precisa de " .. Balance.requirementText(target) .. " + 🪙 " .. Format.number(
+			"🔒 " .. route.name .. ": precisa de " .. Balance.requirementText(target) .. " + 💰 " .. Format.number(
 				route.unlockCost
 			) .. ". Desbloqueie no menu 🗺️ Rotas"
 	end

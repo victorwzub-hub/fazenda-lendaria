@@ -4,6 +4,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Routes = require(Shared.Config.Routes)
+local Style = require(Shared.Style)
 
 local MapBuilder = {}
 
@@ -13,7 +14,7 @@ local PLOT_SIZE = 70
 local PORTAL_RADIUS = 58
 local HUB_SIZE = 440
 
-local GRASS = Color3.fromRGB(106, 172, 78)
+local GRASS = Color3.fromRGB(96, 196, 70)
 local SAND = Color3.fromRGB(230, 212, 160)
 local WOOD = Color3.fromRGB(150, 105, 65)
 local FENCE = Color3.fromRGB(238, 228, 208)
@@ -98,25 +99,28 @@ local function textLabel(
 	label.TextScaled = true
 	label.Text = text
 	label.TextColor3 = color
-	label.TextStrokeTransparency = 0.2
+	Style.outline(label, 4)
 	label.Parent = parent
 	return label
 end
 
 local function setupLighting()
-	Lighting.ClockTime = 14.5
-	Lighting.Brightness = 2.4
-	Lighting.OutdoorAmbient = Color3.fromRGB(150, 150, 160)
-	Lighting.EnvironmentDiffuseScale = 0.5
-	Lighting.EnvironmentSpecularScale = 0.5
+	-- Dia claro e colorido: sombra suave e ambiente forte, para nada ficar escuro.
+	Lighting.ClockTime = 14
+	Lighting.Brightness = 3
+	Lighting.Ambient = Color3.fromRGB(95, 95, 105)
+	Lighting.OutdoorAmbient = Color3.fromRGB(175, 175, 185)
+	Lighting.ShadowSoftness = 0.6
+	Lighting.EnvironmentDiffuseScale = 0.4
+	Lighting.EnvironmentSpecularScale = 0.3
 	if not Lighting:FindFirstChildOfClass("Atmosphere") then
 		local atmosphere = Instance.new("Atmosphere")
-		atmosphere.Density = 0.25
-		atmosphere.Offset = 0.1
-		atmosphere.Color = Color3.fromRGB(200, 220, 255)
-		atmosphere.Decay = Color3.fromRGB(120, 140, 170)
-		atmosphere.Glare = 0.2
-		atmosphere.Haze = 1.2
+		atmosphere.Density = 0.2
+		atmosphere.Offset = 0.05
+		atmosphere.Color = Color3.fromRGB(205, 228, 255)
+		atmosphere.Decay = Color3.fromRGB(140, 175, 230)
+		atmosphere.Glare = 0.1
+		atmosphere.Haze = 0.4
 		atmosphere.Parent = Lighting
 	end
 	if not Lighting:FindFirstChild("Bloom") then
@@ -130,8 +134,9 @@ local function setupLighting()
 	if not Lighting:FindFirstChild("Cor") then
 		local color = Instance.new("ColorCorrectionEffect")
 		color.Name = "Cor"
-		color.Saturation = 0.15
-		color.Contrast = 0.05
+		color.Saturation = 0.25
+		color.Contrast = 0.06
+		color.Brightness = 0.02
 		color.Parent = Lighting
 	end
 end
@@ -265,7 +270,7 @@ local function buildPortal(
 	emitter.Size = NumberSequence.new(0.4, 0)
 	emitter.Parent = field
 
-	local gui = billboard(beam, UDim2.fromScale(20, 6), Vector3.new(0, 5, 0), 220)
+	local gui = billboard(beam, UDim2.fromScale(28, 8), Vector3.new(0, 6, 0), 260)
 	gui.Name = "Rotulo"
 	textLabel(gui, "Titulo", title, UDim2.fromScale(1, 0.55), UDim2.fromScale(0, 0), Color3.new(1, 1, 1))
 	textLabel(gui, "Status", "", UDim2.fromScale(1, 0.4), UDim2.fromScale(0, 0.58), Color3.fromRGB(255, 235, 150))
@@ -315,7 +320,7 @@ local function buildHub(world: Instance): SpawnLocation
 	end
 	block(hub, Vector3.new(9, 0.6, 5), CFrame.new(0, 10.2, 0), Color3.fromRGB(180, 60, 50), Enum.Material.WoodPlanks)
 
-	local signAnchor = decor(block(hub, Vector3.one, CFrame.new(0, 26, 0), GRASS))
+	local signAnchor = decor(block(hub, Vector3.one, CFrame.new(0, 44, 0), GRASS))
 	signAnchor.Transparency = 1
 	local sign = billboard(signAnchor, UDim2.fromScale(44, 9), Vector3.zero, 400)
 	textLabel(
@@ -375,7 +380,7 @@ local function buildPlot(parent: Instance, index: number): Plot
 		model,
 		Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
 		cframe * CFrame.new(0, -0.5, 0),
-		Color3.fromRGB(125, 190, 85),
+		Color3.fromRGB(118, 208, 78),
 		Enum.Material.Grass
 	)
 	fenceLine(model, cframe * CFrame.new(0, 0, half), PLOT_SIZE)
@@ -622,6 +627,7 @@ function MapBuilder.build(): { plots: { Plot }, zones: { [string]: Zone }, porta
 		zones[routeId] = buildZone(zoneFolder, routeId, i)
 	end
 
+	Style.apply(world)
 	world.Parent = Workspace
 	return { plots = plots, zones = zones, portals = portals }
 end

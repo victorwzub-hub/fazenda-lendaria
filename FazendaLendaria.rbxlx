@@ -2,7 +2,7 @@
 <Meta name="ExplicitAutoJoints">true</Meta>
 <External>null</External>
 <External>nil</External>
-<Item class="ReplicatedStorage" referent="RBX0000000C"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX0000000B"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX00000000"><Properties><string name="Name">AnimalModel</string><ProtectedString name="Source"><![CDATA[local Config = script.Parent.Config
+<Item class="ReplicatedStorage" referent="RBX0000000D"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX0000000C"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX00000000"><Properties><string name="Name">AnimalModel</string><ProtectedString name="Source"><![CDATA[local Config = script.Parent.Config
 local Rarities = require(Config.Rarities)
 local Species = require(Config.Species)
 
@@ -533,7 +533,7 @@ local Materials = {}
 
 Materials.byId = {
 	Semente = { name = "Semente", emoji = "🌱", color = Color3.fromRGB(190, 145, 90), tier = 1 },
-	Pena = { name = "Pena", emoji = "🪶", color = Color3.fromRGB(245, 245, 245), tier = 2 },
+	Pena = { name = "Pena", emoji = "🕊️", color = Color3.fromRGB(245, 245, 245), tier = 2 },
 	PenaDourada = { name = "Pena Dourada", emoji = "✨", color = Color3.fromRGB(255, 205, 60), tier = 3 },
 
 	Cenoura = { name = "Cenoura", emoji = "🥕", color = Color3.fromRGB(255, 140, 40), tier = 1 },
@@ -863,8 +863,68 @@ function Remotes.func(name: string): RemoteFunction
 end
 
 return Remotes
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000B"><Properties><string name="Name">Style</string><ProtectedString name="Source"><![CDATA[-- Visual "de brinquedo" dos simuladores de Roblox: plástico com pecinhas (studs) e cores vivas.
+local Style = {}
+
+-- Materiais realistas que viram plástico. Neon, vidro, água e plástico liso ficam como estão.
+local TOY: { [Enum.Material]: boolean } = {
+	[Enum.Material.Grass] = true,
+	[Enum.Material.Ground] = true,
+	[Enum.Material.Mud] = true,
+	[Enum.Material.Sand] = true,
+	[Enum.Material.Cobblestone] = true,
+	[Enum.Material.Slate] = true,
+	[Enum.Material.Wood] = true,
+	[Enum.Material.WoodPlanks] = true,
+	[Enum.Material.Fabric] = true,
+}
+
+-- Área mínima do topo para ganhar studs; peças pequenas ficam lisas e não poluem.
+local MIN_STUD_AREA = 6
+
+local function vivid(color: Color3): Color3
+	local h, s, v = color:ToHSV()
+	return Color3.fromHSV(h, math.min(1, s * 1.2), math.min(1, v * 1.08))
+end
+
+function Style.toy(part: BasePart)
+	if not TOY[part.Material] then
+		return
+	end
+	part.Material = Enum.Material.Plastic
+	part.Color = vivid(part.Color)
+	local isBlock = part:IsA("WedgePart") or (part:IsA("Part") and part.Shape == Enum.PartType.Block)
+	if isBlock and part.Size.X * part.Size.Z >= MIN_STUD_AREA then
+		part.TopSurface = Enum.SurfaceType.Studs
+	end
+end
+
+function Style.apply(root: Instance)
+	if root:IsA("BasePart") then
+		Style.toy(root)
+	end
+	for _, descendant in root:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			Style.toy(descendant)
+		end
+	end
+end
+
+-- Contorno preto grosso nos textos, igual aos títulos dos simuladores.
+function Style.outline(label: TextLabel | TextButton, thickness: number?)
+	label.TextStrokeTransparency = 1
+	local stroke = Instance.new("UIStroke")
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.Thickness = thickness or 3
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = label
+	return stroke
+end
+
+return Style
 ]]></ProtectedString></Properties></Item></Item></Item>
-<Item class="ServerScriptService" referent="RBX00000017"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000016"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+<Item class="ServerScriptService" referent="RBX00000018"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000017"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 
 local Services = script.Services
 local ActionService = require(Services.ActionService)
@@ -936,7 +996,7 @@ Players.PlayerRemoving:Connect(function(player)
 	FarmService.releasePlot(player)
 	DataService.release(player)
 end)
-]]></ProtectedString></Properties><Item class="Folder" referent="RBX00000015"><Properties><string name="Name">Services</string></Properties><Item class="ModuleScript" referent="RBX0000000D"><Properties><string name="Name">ActionService</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+]]></ProtectedString></Properties><Item class="Folder" referent="RBX00000016"><Properties><string name="Name">Services</string></Properties><Item class="ModuleScript" referent="RBX0000000E"><Properties><string name="Name">ActionService</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -1029,7 +1089,7 @@ function ActionService.init()
 end
 
 return ActionService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000E"><Properties><string name="Name">DataService</string><ProtectedString name="Source"><![CDATA[local DataStoreService = game:GetService("DataStoreService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">DataService</string><ProtectedString name="Source"><![CDATA[local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -1269,7 +1329,7 @@ function DataService.init()
 end
 
 return DataService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">FarmService</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000010"><Properties><string name="Name">FarmService</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -1483,7 +1543,7 @@ function FarmService.evolve(player: Player, animalId: string): (boolean, string?
 		title = "⬆️ EVOLUIU!",
 		name = Balance.animalName(animal),
 		color = Rarities.list[animal.rarity].color,
-		sub = "Agora produz 🪙 " .. Format.rate(Balance.animalProduction(animal)) .. "/s",
+		sub = "Agora produz 💰 " .. Format.rate(Balance.animalProduction(animal)) .. "/s",
 	})
 	return true, nil
 end
@@ -1502,7 +1562,7 @@ function FarmService.sell(player: Player, animalId: string): (boolean, string?)
 	DataService.addCoins(player, value)
 	despawnModel(player, animalId)
 	DataService.push(player)
-	return true, "Vendido por 🪙 " .. Format.number(value)
+	return true, "Vendido por 💰 " .. Format.number(value)
 end
 
 function FarmService.giveStarter(player: Player)
@@ -1520,7 +1580,7 @@ function FarmService.applyOfflineEarnings(player: Player)
 		Notify.big(
 			player,
 			"Bem-vindo de volta! 🌾",
-			"Sua fazenda rendeu 🪙 " .. Format.number(amount) .. " enquanto você estava fora",
+			"Sua fazenda rendeu 💰 " .. Format.number(amount) .. " enquanto você estava fora",
 			GOLD
 		)
 	end
@@ -1542,12 +1602,13 @@ function FarmService.init(plotList)
 end
 
 return FarmService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000010"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Routes = require(Shared.Config.Routes)
+local Style = require(Shared.Style)
 
 local MapBuilder = {}
 
@@ -1557,7 +1618,7 @@ local PLOT_SIZE = 70
 local PORTAL_RADIUS = 58
 local HUB_SIZE = 440
 
-local GRASS = Color3.fromRGB(106, 172, 78)
+local GRASS = Color3.fromRGB(96, 196, 70)
 local SAND = Color3.fromRGB(230, 212, 160)
 local WOOD = Color3.fromRGB(150, 105, 65)
 local FENCE = Color3.fromRGB(238, 228, 208)
@@ -1642,25 +1703,28 @@ local function textLabel(
 	label.TextScaled = true
 	label.Text = text
 	label.TextColor3 = color
-	label.TextStrokeTransparency = 0.2
+	Style.outline(label, 4)
 	label.Parent = parent
 	return label
 end
 
 local function setupLighting()
-	Lighting.ClockTime = 14.5
-	Lighting.Brightness = 2.4
-	Lighting.OutdoorAmbient = Color3.fromRGB(150, 150, 160)
-	Lighting.EnvironmentDiffuseScale = 0.5
-	Lighting.EnvironmentSpecularScale = 0.5
+	-- Dia claro e colorido: sombra suave e ambiente forte, para nada ficar escuro.
+	Lighting.ClockTime = 14
+	Lighting.Brightness = 3
+	Lighting.Ambient = Color3.fromRGB(95, 95, 105)
+	Lighting.OutdoorAmbient = Color3.fromRGB(175, 175, 185)
+	Lighting.ShadowSoftness = 0.6
+	Lighting.EnvironmentDiffuseScale = 0.4
+	Lighting.EnvironmentSpecularScale = 0.3
 	if not Lighting:FindFirstChildOfClass("Atmosphere") then
 		local atmosphere = Instance.new("Atmosphere")
-		atmosphere.Density = 0.25
-		atmosphere.Offset = 0.1
-		atmosphere.Color = Color3.fromRGB(200, 220, 255)
-		atmosphere.Decay = Color3.fromRGB(120, 140, 170)
-		atmosphere.Glare = 0.2
-		atmosphere.Haze = 1.2
+		atmosphere.Density = 0.2
+		atmosphere.Offset = 0.05
+		atmosphere.Color = Color3.fromRGB(205, 228, 255)
+		atmosphere.Decay = Color3.fromRGB(140, 175, 230)
+		atmosphere.Glare = 0.1
+		atmosphere.Haze = 0.4
 		atmosphere.Parent = Lighting
 	end
 	if not Lighting:FindFirstChild("Bloom") then
@@ -1674,8 +1738,9 @@ local function setupLighting()
 	if not Lighting:FindFirstChild("Cor") then
 		local color = Instance.new("ColorCorrectionEffect")
 		color.Name = "Cor"
-		color.Saturation = 0.15
-		color.Contrast = 0.05
+		color.Saturation = 0.25
+		color.Contrast = 0.06
+		color.Brightness = 0.02
 		color.Parent = Lighting
 	end
 end
@@ -1809,7 +1874,7 @@ local function buildPortal(
 	emitter.Size = NumberSequence.new(0.4, 0)
 	emitter.Parent = field
 
-	local gui = billboard(beam, UDim2.fromScale(20, 6), Vector3.new(0, 5, 0), 220)
+	local gui = billboard(beam, UDim2.fromScale(28, 8), Vector3.new(0, 6, 0), 260)
 	gui.Name = "Rotulo"
 	textLabel(gui, "Titulo", title, UDim2.fromScale(1, 0.55), UDim2.fromScale(0, 0), Color3.new(1, 1, 1))
 	textLabel(gui, "Status", "", UDim2.fromScale(1, 0.4), UDim2.fromScale(0, 0.58), Color3.fromRGB(255, 235, 150))
@@ -1859,7 +1924,7 @@ local function buildHub(world: Instance): SpawnLocation
 	end
 	block(hub, Vector3.new(9, 0.6, 5), CFrame.new(0, 10.2, 0), Color3.fromRGB(180, 60, 50), Enum.Material.WoodPlanks)
 
-	local signAnchor = decor(block(hub, Vector3.one, CFrame.new(0, 26, 0), GRASS))
+	local signAnchor = decor(block(hub, Vector3.one, CFrame.new(0, 44, 0), GRASS))
 	signAnchor.Transparency = 1
 	local sign = billboard(signAnchor, UDim2.fromScale(44, 9), Vector3.zero, 400)
 	textLabel(
@@ -1919,7 +1984,7 @@ local function buildPlot(parent: Instance, index: number): Plot
 		model,
 		Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
 		cframe * CFrame.new(0, -0.5, 0),
-		Color3.fromRGB(125, 190, 85),
+		Color3.fromRGB(118, 208, 78),
 		Enum.Material.Grass
 	)
 	fenceLine(model, cframe * CFrame.new(0, 0, half), PLOT_SIZE)
@@ -2166,12 +2231,13 @@ function MapBuilder.build(): { plots: { Plot }, zones: { [string]: Zone }, porta
 		zones[routeId] = buildZone(zoneFolder, routeId, i)
 	end
 
+	Style.apply(world)
 	world.Parent = Workspace
 	return { plots = plots, zones = zones, portals = portals }
 end
 
 return MapBuilder
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">Notify</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000012"><Properties><string name="Name">Notify</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Remotes = require(ReplicatedStorage:WaitForChild("Shared").Remotes)
 
@@ -2197,7 +2263,7 @@ function Notify.reveal(player: Player, payload)
 end
 
 return Notify
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000012"><Properties><string name="Name">PassService</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000013"><Properties><string name="Name">PassService</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GamePasses = require(ReplicatedStorage:WaitForChild("Shared").Config.GamePasses)
@@ -2272,7 +2338,7 @@ function PassService.init()
 end
 
 return PassService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000013"><Properties><string name="Name">RouteService</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000014"><Properties><string name="Name">RouteService</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -2283,6 +2349,7 @@ local Materials = require(Shared.Config.Materials)
 local Rarities = require(Shared.Config.Rarities)
 local Routes = require(Shared.Config.Routes)
 local Species = require(Shared.Config.Species)
+local Style = require(Shared.Style)
 
 local DataService = require(script.Parent.DataService)
 local FarmService = require(script.Parent.FarmService)
@@ -2469,6 +2536,7 @@ local function buildNode(def, route): (Model, BasePart)
 		end
 	end
 	model.WorldPivot = CFrame.identity
+	Style.apply(model)
 	return model, root
 end
 
@@ -2513,8 +2581,8 @@ local function collect(player: Player, route, def): boolean
 			name = Balance.animalName(shown),
 			color = Rarities.list[rarity].color,
 			sub = if soldFor
-				then "Fazenda cheia! Vendido por 🪙 " .. Format.number(soldFor) .. " — aumente a fazenda na 🛒 Loja"
-				else "Foi para a sua fazenda: +🪙 " .. Format.rate(Balance.animalProduction(shown)) .. "/s",
+				then "Fazenda cheia! Vendido por 💰 " .. Format.number(soldFor) .. " — aumente a fazenda na 🛒 Loja"
+				else "Foi para a sua fazenda: +💰 " .. Format.rate(Balance.animalProduction(shown)) .. "/s",
 		})
 		return true
 	end
@@ -2589,7 +2657,7 @@ function RouteService.travel(player: Player, target: string): (boolean, string?)
 	end
 	if not profile.routes[target] then
 		return false,
-			"🔒 " .. route.name .. ": precisa de " .. Balance.requirementText(target) .. " + 🪙 " .. Format.number(
+			"🔒 " .. route.name .. ": precisa de " .. Balance.requirementText(target) .. " + 💰 " .. Format.number(
 				route.unlockCost
 			) .. ". Desbloqueie no menu 🗺️ Rotas"
 	end
@@ -2671,7 +2739,7 @@ function RouteService.init(zoneMap, portals: { [string]: BasePart })
 end
 
 return RouteService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000014"><Properties><string name="Name">Teleport</string><ProtectedString name="Source"><![CDATA[local Teleport = {}
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000015"><Properties><string name="Name">Teleport</string><ProtectedString name="Source"><![CDATA[local Teleport = {}
 
 function Teleport.to(player: Player, target: CFrame): boolean
 	local character = player.Character
@@ -2690,7 +2758,7 @@ end
 
 return Teleport
 ]]></ProtectedString></Properties></Item></Item></Item></Item>
-<Item class="StarterPlayer" referent="RBX00000027"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000026"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000025"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+<Item class="StarterPlayer" referent="RBX00000029"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000028"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000027"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -2698,6 +2766,7 @@ local Remotes = require(ReplicatedStorage:WaitForChild("Shared").Remotes)
 
 local State = require(script.State)
 local World = require(script.World)
+local Guide = require(script.Guide)
 local Hud = require(script.UI.Hud)
 local Kit = require(script.UI.Kit)
 local Notifications = require(script.UI.Notifications)
@@ -2769,6 +2838,7 @@ end
 
 Hud.mount(gui, scales, {
 	{
+		id = "Animais",
 		emoji = "🐔",
 		label = "Animais",
 		color = Kit.colors.green,
@@ -2777,6 +2847,7 @@ Hud.mount(gui, scales, {
 		end,
 	},
 	{
+		id = "Rotas",
 		emoji = "🗺️",
 		label = "Rotas",
 		color = Kit.colors.blue,
@@ -2785,6 +2856,7 @@ Hud.mount(gui, scales, {
 		end,
 	},
 	{
+		id = "Loja",
 		emoji = "🛒",
 		label = "Loja",
 		color = Kit.colors.yellow,
@@ -2793,6 +2865,7 @@ Hud.mount(gui, scales, {
 		end,
 	},
 	{
+		id = "Indice",
 		emoji = "📖",
 		label = "Índice",
 		color = Color3.fromRGB(165, 100, 225),
@@ -2801,6 +2874,7 @@ Hud.mount(gui, scales, {
 		end,
 	},
 	{
+		id = "Mochila",
 		emoji = "🎒",
 		label = "Mochila",
 		color = Color3.fromRGB(180, 120, 70),
@@ -2809,6 +2883,7 @@ Hud.mount(gui, scales, {
 		end,
 	},
 	{
+		id = "Fazenda",
 		emoji = "🏡",
 		label = "Fazenda",
 		color = Color3.fromRGB(120, 170, 70),
@@ -2855,12 +2930,245 @@ end)
 
 State.start()
 World.start()
+Guide.start()
 
 while true do
 	Hud.tick()
+	Guide.update()
 	task.wait(0.5)
 end
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">Guide</string><ProtectedString name="Source"><![CDATA[-- Diz ao jogador o que fazer agora, em poucas palavras, e mostra o caminho:
+-- trilha de bolinhas no chão + seta pulando em cima do objetivo, ou seta num botão do menu.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Balance = require(Shared.Balance)
+local Rarities = require(Shared.Config.Rarities)
+local Routes = require(Shared.Config.Routes)
+local Style = require(Shared.Style)
+
+local State = require(script.Parent.State)
+local Hud = require(script.Parent.UI.Hud)
+
+local Guide = {}
+
+local DOT_COUNT = 22
+local DOT_SPACING = 4
+local DOT_SPEED = 6
+local STOP_DISTANCE = 6
+local ZONE_MARGIN = 30
+
+local player = Players.LocalPlayer
+local target: Vector3? = nil
+local dots: { BasePart } = {}
+local arrowAnchor: BasePart
+local arrowGui: BillboardGui
+
+local function rootPart(): BasePart?
+	local character = player.Character
+	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+local function currentZone(position: Vector3): string?
+	for _, routeId in Routes.order do
+		local route = Routes.byId[routeId]
+		local offset = position - route.origin
+		local half = route.size / 2 + ZONE_MARGIN
+		if math.abs(offset.X) < half and math.abs(offset.Z) < half then
+			return routeId
+		end
+	end
+	return nil
+end
+
+local function nearestNode(routeId: string, from: Vector3, nestsOnly: boolean): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	local nodes = zone and zone:FindFirstChild("Nos")
+	if not nodes then
+		return nil
+	end
+	local best: Vector3? = nil
+	local bestDistance = math.huge
+	for _, node in nodes:GetChildren() do
+		if node:IsA("Model") and (not nestsOnly or node.Name == "Ninho") then
+			local position = node:GetPivot().Position
+			local distance = (position - from).Magnitude
+			if distance < bestDistance then
+				best, bestDistance = position, distance
+			end
+		end
+	end
+	return best
+end
+
+local function portalPosition(routeId: string): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local portals = world and world:FindFirstChild("Portais")
+	local portal = portals and portals:FindFirstChild(routeId)
+	local field = portal and portal:FindFirstChild("Campo")
+	return if field then (field :: BasePart).Position else nil
+end
+
+local function canEvolveSomething(profile, coins: number): boolean
+	for _, animal in profile.animals do
+		if animal.rarity < Rarities.MAX then
+			local cost = Balance.evolveCost(animal.species, animal.rarity)
+			if cost and Balance.missingForCost(profile, coins, cost) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function canUnlockNextRoute(profile, coins: number): boolean
+	for _, routeId in Routes.order do
+		if not profile.routes[routeId] then
+			return (Balance.canUnlockRoute(profile, coins, routeId))
+		end
+	end
+	return false
+end
+
+local function bestUnlockedRoute(profile): string
+	local best = Routes.order[1]
+	for _, routeId in Routes.order do
+		if profile.routes[routeId] then
+			best = routeId
+		end
+	end
+	return best
+end
+
+-- Decide o próximo passo: texto curtinho + um botão OU um lugar no mapa.
+function Guide.update()
+	local profile = State.profile
+	local root = rootPart()
+	if not profile or not root then
+		return
+	end
+	local coins = State.coins()
+	local zone = currentZone(root.Position)
+
+	local text: string
+	local button: string? = nil
+	local place: Vector3? = nil
+	if canEvolveSomething(profile, coins) then
+		text, button = "⬆️ Evolua seu animal!", "Animais"
+	elseif canUnlockNextRoute(profile, coins) then
+		text, button = "🗺️ Libere uma rota nova!", "Rotas"
+	elseif zone then
+		place = nearestNode(zone, root.Position, true)
+		if place then
+			text = "🥚 Abra o ninho!"
+		else
+			text, place = "✨ Colete os itens!", nearestNode(zone, root.Position, false)
+		end
+	else
+		text, place = "🌀 Entre no portal!", portalPosition(bestUnlockedRoute(profile))
+	end
+
+	Hud.setObjective(text)
+	Hud.point(button)
+	target = place
+end
+
+local function makeDot(parent: Instance): BasePart
+	local dot = Instance.new("Part")
+	dot.Name = "Trilha"
+	-- Disco branco deitado no chão (sem Neon: com o Bloom ele virava uma bola de luz).
+	dot.Shape = Enum.PartType.Cylinder
+	dot.Size = Vector3.new(0.2, 1.8, 1.8)
+	dot.Material = Enum.Material.SmoothPlastic
+	dot.Color = Color3.new(1, 1, 1)
+	dot.Anchored = true
+	dot.CanCollide = false
+	dot.CanQuery = false
+	dot.CanTouch = false
+	dot.CastShadow = false
+	dot.Parent = parent
+	return dot
+end
+
+local function render()
+	local root = rootPart()
+	local goal = target
+	local show = root ~= nil and goal ~= nil
+	arrowGui.Enabled = show
+	if not show then
+		for _, dot in dots do
+			dot.Transparency = 1
+		end
+		return
+	end
+	local from = (root :: BasePart).Position - Vector3.new(0, 2.4, 0)
+	local to = goal :: Vector3
+	local flat = Vector3.new(to.X - from.X, 0, to.Z - from.Z)
+	local distance = flat.Magnitude
+	local direction = if distance > 0 then flat.Unit else Vector3.zero
+	local phase = (os.clock() * DOT_SPEED) % DOT_SPACING
+
+	for i, dot in dots do
+		local along = i * DOT_SPACING - phase
+		if along > 0 and along < distance - STOP_DISTANCE then
+			local height = from.Y + (to.Y - from.Y) * math.clamp(along / distance, 0, 1)
+			dot.CFrame = CFrame.new(Vector3.new(from.X, height, from.Z) + direction * along)
+				* CFrame.Angles(0, 0, math.rad(90))
+			-- Some aos poucos perto do jogador e no fim da trilha.
+			dot.Transparency = math.clamp(1 - along / 6, 0, 0.8) + math.clamp((i - DOT_COUNT + 4) / 5, 0, 1)
+		else
+			dot.Transparency = 1
+		end
+	end
+
+	arrowAnchor.Position = to + Vector3.new(0, 7 + math.abs(math.sin(os.clock() * 4)) * 2.5, 0)
+end
+
+function Guide.start()
+	local folder = Instance.new("Folder")
+	folder.Name = "Guia"
+	folder.Parent = Workspace.CurrentCamera
+
+	for i = 1, DOT_COUNT do
+		dots[i] = makeDot(folder)
+	end
+
+	arrowAnchor = Instance.new("Part")
+	arrowAnchor.Name = "SetaAlvo"
+	arrowAnchor.Anchored = true
+	arrowAnchor.CanCollide = false
+	arrowAnchor.CanQuery = false
+	arrowAnchor.CanTouch = false
+	arrowAnchor.Transparency = 1
+	arrowAnchor.Size = Vector3.one
+	arrowAnchor.Parent = folder
+
+	arrowGui = Instance.new("BillboardGui")
+	arrowGui.Size = UDim2.fromScale(6, 6)
+	arrowGui.AlwaysOnTop = true
+	arrowGui.LightInfluence = 0
+	arrowGui.Enabled = false
+	arrowGui.Parent = arrowAnchor
+	local arrow = Instance.new("TextLabel")
+	arrow.BackgroundTransparency = 1
+	arrow.Size = UDim2.fromScale(1, 1)
+	arrow.Font = Enum.Font.FredokaOne
+	arrow.Text = "▼"
+	arrow.TextScaled = true
+	arrow.TextColor3 = Color3.fromRGB(255, 220, 60)
+	Style.outline(arrow, 4)
+	arrow.Parent = arrowGui
+
+	RunService.RenderStepped:Connect(render)
+end
+
+return Guide
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -2956,26 +3264,25 @@ function State.start()
 end
 
 return State
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000023"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000025"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Balance = require(Shared.Balance)
 local Format = require(Shared.Format)
-local Rarities = require(Shared.Config.Rarities)
-local Routes = require(Shared.Config.Routes)
-local Species = require(Shared.Config.Species)
+local Style = require(Shared.Style)
 
 local Kit = require(script.Parent.Kit)
 local State = require(script.Parent.Parent.State)
 
-export type MenuEntry = { emoji: string, label: string, color: Color3, onClick: () -> () }
+export type MenuEntry = { id: string, emoji: string, label: string, color: Color3, onClick: () -> () }
 
 local Hud = {}
 
 local GOLD = Color3.fromRGB(255, 205, 60)
-local DARK = Color3.fromRGB(40, 30, 20)
+local MONEY = Color3.fromRGB(95, 235, 70)
+local BUTTON_SIZE = Vector2.new(196, 62)
 
 local coinsLabel: TextLabel
 local coinsScale: UIScale
@@ -2984,203 +3291,257 @@ local luckLabel: TextLabel
 local goldenFrame: Frame
 local goldenLabel: TextLabel
 local objectiveLabel: TextLabel
+local objectiveScale: UIScale
 
-local function pill(parent: Instance, props: { [string]: any }, strokeColor: Color3): Frame
-	local frame = Kit.new("Frame", {
-		BackgroundColor3 = DARK,
-		BackgroundTransparency = 0.2,
-		Parent = parent,
-	}, { Kit.corner(22), Kit.stroke(strokeColor, 3) })
-	for key, value in props do
-		(frame :: any)[key] = value
-	end
-	return frame
+type MenuButton = { button: TextButton, pointer: TextLabel, badge: Frame }
+local buttons: { [string]: MenuButton } = {}
+local pointed: string? = nil
+
+-- Texto grande com contorno preto, o "jeito simulador" de escrever.
+local function bigText(props: { [string]: any }, outline: number?): TextLabel
+	local label = Kit.label(props)
+	label.Font = Enum.Font.FredokaOne
+	label.TextWrapped = false
+	Style.outline(label, outline or 3)
+	return label
 end
 
-local function objective(profile): string
-	if (profile.stats.collected or 0) == 0 then
-		return "Entre no portal 🐔 Rota do Galinheiro (perto do poço) e colete itens"
+local function menuButton(parent: Instance, entry: MenuEntry, order: number): MenuButton
+	local button = Kit.button("", entry.color, entry.onClick, {
+		Name = entry.id,
+		Size = UDim2.fromOffset(BUTTON_SIZE.X, BUTTON_SIZE.Y),
+		LayoutOrder = order,
+		Parent = parent,
+	})
+	-- Botão "gordinho": claro em cima, escuro embaixo, borda escura grossa.
+	local stroke = button:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Thickness = 3.5
+		stroke.Color = Kit.darken(entry.color, 0.55)
 	end
-	for _, routeId in Routes.order do
-		if not profile.routes[routeId] then
-			local route = Routes.byId[routeId]
-			local req = route.requirement
-			if req and not Balance.hasAnimal(profile, req.species, req.rarity) then
-				return "Evolua até ter " .. Balance.requirementText(routeId) .. " para liberar a " .. route.name
-			end
-			return "Libere a "
-				.. route.name
-				.. " por 🪙 "
-				.. Format.number(route.unlockCost)
-				.. " no menu 🗺️ Rotas"
-		end
-	end
-	for _, speciesId in Species.order do
-		if not Balance.hasAnimal(profile, speciesId, Rarities.LEGENDARY) then
-			local species = Species.byId[speciesId]
-			return "Consiga "
-				.. species.emoji
-				.. " "
-				.. species.name
-				.. " "
-				.. Rarities.label(Rarities.LEGENDARY, species.feminine)
-		end
-	end
-	return "Complete o 📖 Índice: encontre todos os animais Míticos!"
+	Kit.new("UIGradient", {
+		Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(175, 175, 175)),
+		Rotation = 90,
+		Parent = button,
+	})
+	Kit.label({
+		Text = entry.emoji,
+		TextSize = 38,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Position = UDim2.fromOffset(6, 0),
+		Size = UDim2.new(0, 52, 1, 0),
+		Parent = button,
+	})
+	bigText({
+		Text = entry.label,
+		TextSize = 30,
+		TextColor3 = Kit.colors.white,
+		Position = UDim2.fromOffset(62, 0),
+		Size = UDim2.new(1, -66, 1, 0),
+		Parent = button,
+	}, 2.5)
+
+	local badge = Kit.new("Frame", {
+		BackgroundColor3 = Kit.colors.red,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, -4, 0, 4),
+		Size = UDim2.fromOffset(30, 30),
+		Visible = false,
+		ZIndex = 3,
+		Parent = button,
+	}, { Kit.corner(15), Kit.stroke(Color3.new(1, 1, 1), 2.5) })
+	bigText({
+		Text = "!",
+		TextSize = 24,
+		TextColor3 = Kit.colors.white,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 3,
+		Parent = badge,
+	}, 2)
+
+	local pointer = bigText({
+		Text = "◀",
+		TextSize = 44,
+		TextColor3 = GOLD,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(1, 10, 0.5, 0),
+		Size = UDim2.fromOffset(50, 50),
+		Visible = false,
+		Parent = button,
+	}, 3)
+
+	return { button = button, pointer = pointer, badge = badge }
 end
 
 function Hud.mount(gui: ScreenGui, scales: { UIScale }, menu: { MenuEntry })
+	-- Topo: objetivo em letras grandes, como "Quebre um ovo".
 	local top = Kit.new("Frame", {
 		Name = "Topo",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 6),
-		Size = UDim2.fromOffset(640, 120),
+		Position = UDim2.new(0.5, 0, 0, 8),
+		Size = UDim2.fromOffset(760, 130),
 		Parent = gui,
 	})
 	table.insert(scales, Kit.new("UIScale", { Parent = top }))
 
-	local coins = pill(top, {
+	objectiveLabel = bigText({
+		Text = "",
+		TextSize = 44,
+		TextColor3 = Kit.colors.white,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		BackgroundColor3 = Color3.fromRGB(20, 12, 8),
+		BackgroundTransparency = 0.55,
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.fromScale(0.5, 0),
-		Size = UDim2.fromOffset(250, 68),
-	}, GOLD)
-	coinsLabel = Kit.label({
-		Text = "🪙 0",
-		Font = Enum.Font.FredokaOne,
-		TextSize = 32,
-		TextColor3 = Kit.colors.white,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Position = UDim2.fromOffset(0, 4),
-		Size = UDim2.new(1, 0, 0, 38),
-		Parent = coins,
+		Size = UDim2.fromOffset(0, 64),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Parent = top,
+	}, 4)
+	Kit.corner(14).Parent = objectiveLabel
+	Kit.new("UIPadding", {
+		PaddingLeft = UDim.new(0, 26),
+		PaddingRight = UDim.new(0, 26),
+		Parent = objectiveLabel,
 	})
-	coinsScale = Kit.new("UIScale", { Parent = coinsLabel })
-	rateLabel = Kit.label({
-		Text = "+0/s",
-		TextSize = 15,
-		TextColor3 = GOLD,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Position = UDim2.fromOffset(0, 42),
-		Size = UDim2.new(1, 0, 0, 20),
-		Parent = coins,
-	})
+	objectiveScale = Kit.new("UIScale", { Parent = objectiveLabel })
 
-	local luck = pill(top, {
-		AnchorPoint = Vector2.new(0, 0),
-		Position = UDim2.new(0.5, 135, 0, 13),
-		Size = UDim2.fromOffset(130, 42),
-	}, Color3.fromRGB(90, 220, 110))
-	luckLabel = Kit.label({
-		Text = "🍀 x1.00",
-		Font = Enum.Font.FredokaOne,
-		TextSize = 20,
-		TextColor3 = Kit.colors.white,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.fromScale(1, 1),
-		Parent = luck,
-	})
-
-	goldenFrame = pill(top, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(0.5, -135, 0, 13),
-		Size = UDim2.fromOffset(170, 42),
+	goldenFrame = Kit.new("Frame", {
 		BackgroundColor3 = Color3.fromRGB(120, 80, 10),
+		BackgroundTransparency = 0.15,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromOffset(380, 76),
+		Size = UDim2.fromOffset(260, 44),
 		Visible = false,
-	}, GOLD)
-	goldenLabel = Kit.label({
+		Parent = top,
+	}, { Kit.corner(22), Kit.stroke(GOLD, 3) })
+	goldenLabel = bigText({
 		Text = "🌟 0:00",
-		Font = Enum.Font.FredokaOne,
-		TextSize = 19,
+		TextSize = 26,
 		TextColor3 = GOLD,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Size = UDim2.fromScale(1, 1),
 		Parent = goldenFrame,
-	})
+	}, 2.5)
 
-	objectiveLabel = Kit.label({
-		Text = "",
-		TextSize = 15,
-		TextColor3 = Kit.colors.white,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextWrapped = false,
-		BackgroundColor3 = DARK,
-		BackgroundTransparency = 0.35,
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 78),
-		Size = UDim2.fromOffset(0, 30),
-		AutomaticSize = Enum.AutomaticSize.X,
-		Parent = top,
-	})
-	Kit.corner(15).Parent = objectiveLabel
-	Kit.new("UIPadding", {
-		PaddingLeft = UDim.new(0, 14),
-		PaddingRight = UDim.new(0, 14),
-		Parent = objectiveLabel,
-	})
-
-	local menuLayout = Kit.list(8)
+	-- Esquerda: botões grandes com ícone e nome.
+	local menuLayout = Kit.list(10)
+	menuLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	menuLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 	local menuFrame = Kit.new("Frame", {
 		Name = "Menu",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 10, 0.5, 0),
-		Size = UDim2.fromOffset(84, #menu * 86),
+		Position = UDim2.new(0, 14, 0.5, -20),
+		Size = UDim2.fromOffset(BUTTON_SIZE.X + 70, #menu * (BUTTON_SIZE.Y + 10)),
 		Parent = gui,
 	}, { menuLayout })
 	table.insert(scales, Kit.new("UIScale", { Parent = menuFrame }))
-
 	for order, entry in menu do
-		local button = Kit.button("", entry.color, entry.onClick, {
-			Size = UDim2.fromOffset(80, 78),
-			LayoutOrder = order,
-			Parent = menuFrame,
-		})
-		Kit.label({
-			Text = entry.emoji,
-			TextSize = 32,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			Position = UDim2.fromOffset(0, 6),
-			Size = UDim2.new(1, 0, 0, 40),
-			Parent = button,
-		})
-		Kit.label({
-			Text = entry.label,
-			Font = Enum.Font.FredokaOne,
-			TextSize = 15,
-			TextColor3 = Kit.colors.white,
-			TextStrokeTransparency = 0.5,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			Position = UDim2.fromOffset(0, 50),
-			Size = UDim2.new(1, 0, 0, 22),
-			Parent = button,
-		})
+		buttons[entry.id] = menuButton(menuFrame, entry, order)
 	end
+
+	-- Canto de baixo: dinheiro enorme e verde.
+	local money = Kit.new("Frame", {
+		Name = "Dinheiro",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 16, 1, -14),
+		Size = UDim2.fromOffset(420, 112),
+		Parent = gui,
+	})
+	table.insert(scales, Kit.new("UIScale", { Parent = money }))
+	rateLabel = bigText({
+		Text = "+0/s",
+		TextSize = 26,
+		TextColor3 = MONEY,
+		Position = UDim2.fromOffset(8, 0),
+		Size = UDim2.fromOffset(200, 32),
+		Parent = money,
+	}, 2.5)
+	luckLabel = bigText({
+		Text = "🍀 x1.00",
+		TextSize = 26,
+		TextColor3 = Kit.colors.white,
+		Position = UDim2.fromOffset(210, 0),
+		Size = UDim2.fromOffset(200, 32),
+		Parent = money,
+	}, 2.5)
+	Kit.label({
+		Text = "💰",
+		TextSize = 56,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Position = UDim2.fromOffset(0, 36),
+		Size = UDim2.fromOffset(72, 72),
+		Parent = money,
+	})
+	coinsLabel = bigText({
+		Text = "0",
+		TextSize = 60,
+		TextColor3 = MONEY,
+		Position = UDim2.fromOffset(78, 36),
+		Size = UDim2.fromOffset(340, 72),
+		Parent = money,
+	}, 4.5)
+	coinsScale = Kit.new("UIScale", { Parent = coinsLabel })
+
+	-- A setinha do botão apontado fica pulando para chamar atenção.
+	RunService.RenderStepped:Connect(function()
+		if not pointed then
+			return
+		end
+		local entry = buttons[pointed]
+		if entry then
+			local bounce = math.abs(math.sin(os.clock() * 6)) * 14
+			entry.pointer.Position = UDim2.new(1, 10 + bounce, 0.5, 0)
+		end
+	end)
 end
 
 function Hud.setCoins(value: number)
-	coinsLabel.Text = "🪙 " .. Format.number(value)
-	coinsScale.Scale = 1.08
+	coinsLabel.Text = Format.number(value)
+	coinsScale.Scale = 1.1
 	TweenService:Create(coinsScale, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 end
 
+function Hud.setObjective(text: string)
+	if objectiveLabel.Text == text then
+		return
+	end
+	objectiveLabel.Text = text
+	objectiveScale.Scale = 1.25
+	TweenService:Create(objectiveScale, TweenInfo.new(0.4, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+end
+
+-- Aponta um botão do menu (ou nenhum, com nil): seta pulando + bolinha "!".
+function Hud.point(id: string?)
+	if pointed == id then
+		return
+	end
+	for buttonId, entry in buttons do
+		local active = buttonId == id
+		entry.pointer.Visible = active
+		entry.badge.Visible = active
+	end
+	pointed = id
+end
+
 function Hud.tick()
-	local profile = State.profile
-	if profile then
-		rateLabel.Text = "+" .. Format.rate(State.production()) .. " por segundo"
+	if State.profile then
+		rateLabel.Text = "+" .. Format.rate(State.production()) .. "/s"
 		luckLabel.Text = string.format("🍀 x%.2f", State.luck())
-		objectiveLabel.Text = "🎯 " .. objective(profile)
 	end
 	local golden = State.isGoldenHour()
 	goldenFrame.Visible = golden
 	if golden then
-		goldenLabel.Text = "🌟 Dourada " .. Format.time(State.goldenHourEnds() - Workspace:GetServerTimeNow())
+		goldenLabel.Text = "🌟 Hora Dourada " .. Format.time(State.goldenHourEnds() - Workspace:GetServerTimeNow())
 	end
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">Kit</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001C"><Properties><string name="Name">Kit</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
 
 local Kit = {}
 
@@ -3325,7 +3686,7 @@ function Kit.section(text: string, order: number): TextLabel
 end
 
 return Kit
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001D"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
 
 local Kit = require(script.Parent.Kit)
 
@@ -3550,7 +3911,7 @@ function Notifications.reveal(payload)
 end
 
 return Notifications
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000021"><Properties><string name="Name">Pages</string></Properties><Item class="ModuleScript" referent="RBX0000001C"><Properties><string name="Name">Animais</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000023"><Properties><string name="Name">Pages</string></Properties><Item class="ModuleScript" referent="RBX0000001E"><Properties><string name="Name">Animais</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
@@ -3577,7 +3938,7 @@ local function sorted(animals)
 end
 
 local function materialLine(profile, cost): (string, boolean)
-	local parts = { "🪙 " .. Format.number(cost.coins) }
+	local parts = { "💰 " .. Format.number(cost.coins) }
 	local enough = true
 	for _, materialId in Materials.order do
 		local need = cost.materials[materialId]
@@ -3599,7 +3960,7 @@ local function materialLine(profile, cost): (string, boolean)
 end
 
 local function sellButton(parent: Instance, animal, ctx)
-	local price = "Vender 🪙 " .. Format.number(Balance.sellPrice(animal))
+	local price = "Vender 💰 " .. Format.number(Balance.sellPrice(animal))
 	local armed = false
 	local button: TextButton
 	button = Kit.button(price, Kit.colors.yellow, function()
@@ -3633,7 +3994,7 @@ return function(content: Frame, profile, ctx)
 		Parent = header,
 	})
 	Kit.label({
-		Text = "🪙 " .. Format.rate(State.production()) .. " por segundo",
+		Text = "💰 " .. Format.rate(State.production()) .. " por segundo",
 		Font = Enum.Font.FredokaOne,
 		TextSize = 21,
 		TextXAlignment = Enum.TextXAlignment.Right,
@@ -3675,7 +4036,7 @@ return function(content: Frame, profile, ctx)
 			Parent = card,
 		})
 		Kit.label({
-			Text = "Produz 🪙 " .. Format.rate(Balance.animalProduction(animal)) .. "/s",
+			Text = "Produz 💰 " .. Format.rate(Balance.animalProduction(animal)) .. "/s",
 			TextColor3 = Kit.colors.muted,
 			TextSize = 15,
 			Position = UDim2.fromOffset(74, 34),
@@ -3711,7 +4072,7 @@ return function(content: Frame, profile, ctx)
 				local line, materialsOk = materialLine(profile, cost)
 				Kit.label({
 					RichText = true,
-					Text = "➜ " .. Kit.hex(Kit.darken(nextRarity.color, 0.25), nextName) .. "\n" .. line,
+					Text = "▶ " .. Kit.hex(Kit.darken(nextRarity.color, 0.25), nextName) .. "\n" .. line,
 					TextSize = 14,
 					TextYAlignment = Enum.TextYAlignment.Top,
 					Position = UDim2.fromOffset(74, 56),
@@ -3729,7 +4090,7 @@ return function(content: Frame, profile, ctx)
 		sellButton(buttons, animal, ctx)
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001D"><Properties><string name="Name">Indice</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001F"><Properties><string name="Name">Indice</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Rarities = require(Shared.Config.Rarities)
@@ -3793,7 +4154,7 @@ return function(content: Frame, profile, _ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001E"><Properties><string name="Name">Loja</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000020"><Properties><string name="Name">Loja</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -3877,7 +4238,7 @@ return function(content: Frame, profile, ctx)
 			Kit.button("MÁXIMO ⭐", Kit.colors.gray, function() end, buttonProps)
 		else
 			local cost = Upgrades.cost(upgradeId, level)
-			local buy = Kit.button("🪙 " .. Format.number(cost), Kit.colors.gray, function()
+			local buy = Kit.button("💰 " .. Format.number(cost), Kit.colors.gray, function()
 				ctx.act("BuyUpgrade", upgradeId)
 			end, buttonProps)
 			ctx.track(buy, cost, function(affordable)
@@ -3929,7 +4290,7 @@ return function(content: Frame, profile, ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001F"><Properties><string name="Name">Mochila</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000021"><Properties><string name="Name">Mochila</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Format = require(Shared.Format)
@@ -4000,7 +4361,7 @@ return function(content: Frame, profile, _ctx)
 		})
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000020"><Properties><string name="Name">Rotas</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000022"><Properties><string name="Name">Rotas</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
@@ -4056,7 +4417,7 @@ return function(content: Frame, profile, ctx)
 		})
 
 		if unlocked then
-			Kit.button("Ir agora ➜", route.theme, function()
+			Kit.button("Ir agora ▶", route.theme, function()
 				local ok = ctx.act("Travel", routeId)
 				if ok then
 					ctx.close()
@@ -4082,7 +4443,7 @@ return function(content: Frame, profile, ctx)
 				Size = UDim2.new(1, -200, 0, 24),
 				Parent = card,
 			})
-			local unlock = Kit.button("🔓 🪙 " .. Format.number(route.unlockCost), Kit.colors.gray, function()
+			local unlock = Kit.button("🔓 💰 " .. Format.number(route.unlockCost), Kit.colors.gray, function()
 				ctx.act("UnlockRoute", routeId)
 			end, {
 				AnchorPoint = Vector2.new(1, 0.5),
@@ -4097,7 +4458,7 @@ return function(content: Frame, profile, ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000022"><Properties><string name="Name">Panel</string><ProtectedString name="Source"><![CDATA[local Kit = require(script.Parent.Kit)
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000024"><Properties><string name="Name">Panel</string><ProtectedString name="Source"><![CDATA[local Kit = require(script.Parent.Kit)
 
 export type Context = {
 	act: (action: string, arg: string?) -> (boolean, any),
@@ -4219,7 +4580,7 @@ function Panel:refreshCosts(coins: number)
 end
 
 return Panel
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000024"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000026"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -4254,7 +4615,7 @@ local function updatePortals(profile)
 				local route = Routes.byId[routeId]
 				label.Text = "🔒 "
 					.. Balance.requirementText(routeId)
-					.. " + 🪙 "
+					.. " + 💰 "
 					.. Format.number(route.unlockCost)
 				label.TextColor3 = Color3.fromRGB(255, 190, 170)
 			end

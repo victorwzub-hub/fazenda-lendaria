@@ -33,7 +33,7 @@ local function updatePortals(profile)
 				local route = Routes.byId[routeId]
 				label.Text = "🔒 "
 					.. Balance.requirementText(routeId)
-					.. " + 🪙 "
+					.. " + 💰 "
 					.. Format.number(route.unlockCost)
 				label.TextColor3 = Color3.fromRGB(255, 190, 170)
 			end

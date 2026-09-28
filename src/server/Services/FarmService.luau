@@ -212,7 +212,7 @@ function FarmService.evolve(player: Player, animalId: string): (boolean, string?
 		title = "⬆️ EVOLUIU!",
 		name = Balance.animalName(animal),
 		color = Rarities.list[animal.rarity].color,
-		sub = "Agora produz 🪙 " .. Format.rate(Balance.animalProduction(animal)) .. "/s",
+		sub = "Agora produz 💰 " .. Format.rate(Balance.animalProduction(animal)) .. "/s",
 	})
 	return true, nil
 end
@@ -231,7 +231,7 @@ function FarmService.sell(player: Player, animalId: string): (boolean, string?)
 	DataService.addCoins(player, value)
 	despawnModel(player, animalId)
 	DataService.push(player)
-	return true, "Vendido por 🪙 " .. Format.number(value)
+	return true, "Vendido por 💰 " .. Format.number(value)
 end
 
 function FarmService.giveStarter(player: Player)
@@ -249,7 +249,7 @@ function FarmService.applyOfflineEarnings(player: Player)
 		Notify.big(
 			player,
 			"Bem-vindo de volta! 🌾",
-			"Sua fazenda rendeu 🪙 " .. Format.number(amount) .. " enquanto você estava fora",
+			"Sua fazenda rendeu 💰 " .. Format.number(amount) .. " enquanto você estava fora",
 			GOLD
 		)
 	end
