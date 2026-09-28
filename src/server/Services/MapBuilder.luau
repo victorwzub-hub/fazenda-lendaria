@@ -261,6 +261,40 @@ local function tree(parent: Instance, position: Vector3, foliage: Color3, rng: R
 	end
 end
 
+local FLOWER_COLORS = {
+	Color3.fromRGB(255, 90, 170),
+	Color3.fromRGB(255, 225, 60),
+	Color3.fromRGB(255, 80, 70),
+	Color3.fromRGB(170, 110, 255),
+	Color3.fromRGB(255, 255, 255),
+}
+
+-- Florzinha de blocos: caule, pétalas e miolo.
+local function flower(parent: Instance, position: Vector3, rng: Random)
+	local base = CFrame.new(position) * CFrame.Angles(0, rad(rng:NextNumber(0, 90)), 0)
+	local height = rng:NextNumber(1.2, 2)
+	decor(block(parent, Vector3.new(0.3, height, 0.3), base * CFrame.new(0, height / 2, 0), Color3.fromRGB(60, 150, 50)))
+	local petals = FLOWER_COLORS[rng:NextInteger(1, #FLOWER_COLORS)]
+	decor(block(parent, Vector3.new(1.3, 0.4, 0.5), base * CFrame.new(0, height + 0.2, 0), petals))
+	decor(block(parent, Vector3.new(0.5, 0.4, 1.3), base * CFrame.new(0, height + 0.2, 0), petals))
+	decor(block(parent, Vector3.new(0.45, 0.5, 0.45), base * CFrame.new(0, height + 0.3, 0), Color3.fromRGB(255, 200, 40)))
+end
+
+-- Manchas de grama em outro tom quebram o chão "chapado".
+local function patch(parent: Instance, position: Vector3, ground: Color3, rng: Random)
+	local size = rng:NextNumber(6, 14)
+	local tone = if rng:NextNumber() < 0.5 then -0.1 else 0.08
+	decor(
+		block(
+			parent,
+			Vector3.new(size, 0.2, size * rng:NextNumber(0.6, 1)),
+			CFrame.new(position + Vector3.new(0, 0.1, 0)) * CFrame.Angles(0, rad(rng:NextNumber(0, 90)), 0),
+			Style.shade(ground, tone),
+			Enum.Material.Grass
+		)
+	)
+end
+
 -- Arbusto em degraus, como os dos simuladores.
 local function bush(parent: Instance, position: Vector3, foliage: Color3, rng: Random)
 	local base = CFrame.new(position) * CFrame.Angles(0, rad(rng:NextNumber(0, 90)), 0)
@@ -406,6 +440,15 @@ local function buildHub(world: Instance): SpawnLocation
 		local path = (i - 0.5) * (2 * math.pi / PLOT_COUNT)
 		for _, side in { -1, 1 } do
 			bush(hub, (CFrame.Angles(0, path, 0) * CFrame.new(side * 9, 0, 80)).Position, hubFoliage, rng)
+		end
+		-- Flores na beira do caminho e manchas de grama perto da borda.
+		for step = 1, 3 do
+			local at = CFrame.Angles(0, path, 0) * CFrame.new(rng:NextNumber(-7, 7), 0, 30 + step * 12)
+			flower(hub, at.Position, rng)
+		end
+		for _ = 1, 3 do
+			local angle = between + rad(rng:NextNumber(-18, 18))
+			patch(hub, (CFrame.Angles(0, angle, 0) * CFrame.new(0, 0, rng:NextNumber(190, 212))).Position, GRASS, rng)
 		end
 	end
 
@@ -613,6 +656,12 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 	end
 	for _ = 1, math.floor(size / 8) do
 		bush(scenery, randomPoint(6), route.foliage, rng)
+	end
+	for _ = 1, math.floor(size / 5) do
+		patch(scenery, randomPoint(8), route.ground, rng)
+	end
+	for _ = 1, math.floor(size / 4) do
+		flower(scenery, randomPoint(4), rng)
 	end
 	for _ = 1, 18 do
 		rock(scenery, randomPoint(6), rng)

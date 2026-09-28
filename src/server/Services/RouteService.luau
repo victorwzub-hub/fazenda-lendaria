@@ -81,93 +81,96 @@ local function buildNode(def, route): (Model, BasePart)
 	local model = Instance.new("Model")
 	local root: BasePart
 	if def.nest then
+		-- Ninho quadrado de palha, com borda e um ovo oval com pintinhas da cor da rota.
 		model.Name = "Ninho"
-		root = piece(
-			model,
-			Vector3.new(1.2, 5, 5),
-			CFrame.new(0, 0.6, 0) * CFrame.Angles(0, 0, math.rad(90)),
-			Color3.fromRGB(205, 170, 95),
-			Enum.Material.Fabric,
-			Enum.PartType.Cylinder
-		)
+		local straw = Color3.fromRGB(222, 180, 90)
+		root = piece(model, Vector3.new(4.4, 0.6, 4.4), CFrame.new(0, 0.3, 0), straw, Enum.Material.Fabric)
+		for i = 0, 3 do
+			local side = CFrame.Angles(0, i * math.pi / 2, 0)
+			piece(
+				model,
+				Vector3.new(4.4, 0.9, 0.9),
+				side * CFrame.new(0, 0.95, 1.75),
+				Style.shade(straw, -0.18),
+				Enum.Material.Fabric
+			)
+		end
 		local egg = piece(
 			model,
 			Vector3.one * 1.9,
-			CFrame.new(0, 1.8, 0),
-			Color3.fromRGB(255, 246, 225),
+			CFrame.new(0, 2, 0),
+			Color3.fromRGB(255, 248, 230),
 			Enum.Material.SmoothPlastic,
 			Enum.PartType.Ball
 		)
-		piece(
-			model,
-			Vector3.one * 0.5,
-			CFrame.new(0.55, 2.2, -0.6),
-			route.theme,
-			Enum.Material.SmoothPlastic,
-			Enum.PartType.Ball
-		)
-		piece(
-			model,
-			Vector3.one * 0.4,
-			CFrame.new(-0.6, 1.6, -0.55),
-			route.theme,
-			Enum.Material.SmoothPlastic,
-			Enum.PartType.Ball
-		)
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Scale = Vector3.new(1, 1.3, 1)
+		mesh.Parent = egg
+		for _, spot in { Vector3.new(0.62, 2.4, -0.6), Vector3.new(-0.7, 1.9, -0.45), Vector3.new(0.2, 2.9, 0.7) } do
+			piece(model, Vector3.new(0.45, 0.45, 0.45), CFrame.new(spot), route.theme, Enum.Material.SmoothPlastic)
+		end
 		glow(egg, route.theme, 4)
 	else
 		local material = Materials.byId[def.material]
 		model.Name = material.name
 		if material.tier == 1 then
+			-- Arbustinho em degraus com frutinhas quadradas.
 			root = piece(
 				model,
-				Vector3.one * 2.8,
-				CFrame.new(0, 1, 0),
-				route.foliage,
-				Enum.Material.Grass,
-				Enum.PartType.Ball
+				Vector3.new(3, 1.4, 3),
+				CFrame.new(0, 0.7, 0),
+				Style.shade(route.foliage, -0.1),
+				Enum.Material.Grass
 			)
+			piece(model, Vector3.new(2, 1.1, 2), CFrame.new(0, 1.95, 0), route.foliage, Enum.Material.Grass)
 			for i = 0, 2 do
 				local angle = i * math.pi * 2 / 3
 				piece(
 					model,
-					Vector3.one * 0.8,
-					CFrame.new(math.cos(angle) * 0.9, 2.2, math.sin(angle) * 0.9),
+					Vector3.new(0.7, 0.7, 0.7),
+					CFrame.new(math.cos(angle) * 1.2, 1.9 + (i % 2) * 0.7, math.sin(angle) * 1.2)
+						* CFrame.Angles(0, angle, 0),
 					material.color,
-					Enum.Material.SmoothPlastic,
-					Enum.PartType.Ball
+					Enum.Material.SmoothPlastic
 				)
 			end
 		elseif material.tier == 2 then
+			-- Caixote de madeira com faixas escuras e tampa colorida.
+			local wood = Color3.fromRGB(190, 130, 70)
+			root = piece(model, Vector3.one * 2.4, CFrame.new(0, 1.2, 0), wood, Enum.Material.WoodPlanks)
+			for _, y in { 0.45, 1.95 } do
+				piece(
+					model,
+					Vector3.new(2.55, 0.35, 2.55),
+					CFrame.new(0, y, 0),
+					Style.shade(wood, -0.3),
+					Enum.Material.WoodPlanks
+				)
+			end
+			piece(model, Vector3.new(2.6, 0.4, 2.6), CFrame.new(0, 2.6, 0), material.color, Enum.Material.SmoothPlastic)
+		elseif material.tier == 3 then
+			-- Pedra com uma gema de cubo girado brilhando em cima.
 			root = piece(
 				model,
-				Vector3.one * 2.4,
-				CFrame.new(0, 1.2, 0),
-				Color3.fromRGB(165, 118, 70),
-				Enum.Material.WoodPlanks
+				Vector3.new(2.6, 1.2, 2.6),
+				CFrame.new(0, 0.6, 0) * CFrame.Angles(0, math.rad(20), 0),
+				Color3.fromRGB(140, 145, 160),
+				Enum.Material.Slate
 			)
 			piece(
 				model,
-				Vector3.new(2.5, 0.45, 2.5),
-				CFrame.new(0, 2.3, 0),
-				material.color,
-				Enum.Material.SmoothPlastic
-			)
-		elseif material.tier == 3 then
-			root = piece(
-				model,
-				Vector3.new(2.4, 1.2, 2.4),
-				CFrame.new(0, 0.6, 0) * CFrame.Angles(0, math.rad(20), 0),
-				Color3.fromRGB(120, 120, 130),
+				Vector3.new(1.6, 0.6, 1.6),
+				CFrame.new(0.2, 1.5, 0.1) * CFrame.Angles(0, math.rad(50), 0),
+				Color3.fromRGB(165, 170, 185),
 				Enum.Material.Slate
 			)
 			local gem = piece(
 				model,
-				Vector3.one * 1.4,
-				CFrame.new(0, 1.9, 0),
+				Vector3.one * 1.2,
+				CFrame.new(0, 2.8, 0) * CFrame.Angles(math.rad(45), 0, math.rad(45)),
 				material.color,
-				Enum.Material.Neon,
-				Enum.PartType.Ball
+				Enum.Material.Neon
 			)
 			glow(gem, material.color, 5)
 		else

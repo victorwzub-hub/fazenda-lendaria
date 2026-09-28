@@ -1,6 +1,7 @@
 local Config = script.Parent.Config
 local Rarities = require(Config.Rarities)
 local Species = require(Config.Species)
+local Style = require(script.Parent.Style)
 
 local AnimalModel = {}
 
@@ -24,8 +25,8 @@ end
 
 local function eyes(y: number, z: number, x: number, size: number): { PartSpec }
 	return {
-		{ size = Vector3.one * size, at = Vector3.new(x, y, z), color = EYE, shape = "Ball" },
-		{ size = Vector3.one * size, at = Vector3.new(-x, y, z), color = EYE, shape = "Ball" },
+		{ size = Vector3.one * size, at = Vector3.new(x, y, z), color = EYE },
+		{ size = Vector3.one * size, at = Vector3.new(-x, y, z), color = EYE },
 	}
 end
 
@@ -52,14 +53,14 @@ local SHAPES: { [string]: Shape } = {
 		crown = Vector3.new(0, 4.4, -0.75),
 		tag = 5.6,
 		parts = concat({
-			{ size = Vector3.one * 2.4, at = Vector3.new(0, 1.8, 0), color = "body", shape = "Ball" },
+			{ size = Vector3.new(2.2, 2, 2.6), at = Vector3.new(0, 1.8, 0), color = "body" },
 			{
 				size = Vector3.new(0.5, 1.2, 0.9),
 				at = Vector3.new(0, 2.5, 1.15),
 				color = "body",
 				rot = CFrame.Angles(rad(-35), 0, 0),
 			},
-			{ size = Vector3.one * 1.5, at = Vector3.new(0, 3.15, -0.9), color = "body", shape = "Ball" },
+			{ size = Vector3.new(1.4, 1.4, 1.4), at = Vector3.new(0, 3.2, -0.9), color = "body" },
 			{ size = Vector3.new(0.45, 0.3, 0.55), at = Vector3.new(0, 3.05, -1.8), color = "beak" },
 			{ size = Vector3.new(0.22, 0.55, 0.8), at = Vector3.new(0, 3.95, -0.9), color = "red" },
 			{ size = Vector3.new(0.22, 0.4, 0.22), at = Vector3.new(0, 2.7, -1.6), color = "red" },
@@ -67,7 +68,7 @@ local SHAPES: { [string]: Shape } = {
 			{ size = Vector3.new(0.3, 1.0, 1.5), at = Vector3.new(-1.15, 1.9, 0.1), color = "accent" },
 			{ size = Vector3.new(0.2, 0.8, 0.2), at = Vector3.new(0.45, 0.4, 0), color = "beak" },
 			{ size = Vector3.new(0.2, 0.8, 0.2), at = Vector3.new(-0.45, 0.4, 0), color = "beak" },
-		}, eyes(3.3, -1.5, 0.45, 0.25)),
+		}, eyes(3.35, -1.62, 0.4, 0.28)),
 	},
 	porco = {
 		crown = Vector3.new(0, 2.95, -1.9),
@@ -241,7 +242,7 @@ end
 local function addNameTag(root: BasePart, height: number, text: string, color: Color3)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Tag"
-	gui.Size = UDim2.fromOffset(180, 26)
+	gui.Size = UDim2.fromOffset(240, 34)
 	gui.StudsOffset = Vector3.new(0, height, 0)
 	gui.MaxDistance = 70
 	gui.LightInfluence = 0
@@ -249,10 +250,10 @@ local function addNameTag(root: BasePart, height: number, text: string, color: C
 	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
 	label.Font = Enum.Font.FredokaOne
-	label.TextSize = 18
+	label.TextSize = 24
 	label.Text = text
 	label.TextColor3 = color
-	label.TextStrokeTransparency = 0.3
+	Style.outline(label, 2.5)
 	label.Parent = gui
 	gui.Parent = root
 end

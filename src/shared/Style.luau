@@ -4,6 +4,7 @@ local Style = {}
 -- Materiais realistas que viram plástico. Neon, vidro, água e plástico liso ficam como estão.
 local TOY: { [Enum.Material]: boolean } = {
 	[Enum.Material.Grass] = true,
+	[Enum.Material.LeafyGrass] = true,
 	[Enum.Material.Ground] = true,
 	[Enum.Material.Mud] = true,
 	[Enum.Material.Sand] = true,
