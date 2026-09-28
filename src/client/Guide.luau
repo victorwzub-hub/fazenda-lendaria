@@ -153,7 +153,14 @@ function Guide.update()
 	local chaser = player:GetAttribute("Perseguido")
 	local basket = player:GetAttribute("Cesta") or 0
 	local basketFull = basket >= (player:GetAttribute("CestaMax") or math.huge)
-	if chaser then
+	if player:GetAttribute("NaEsteira") then
+		local points = player:GetAttribute("Treino") or 0
+		if points >= (player:GetAttribute("TreinoMax") or math.huge) then
+			text = "🏃 Treino completo! Velocidade máxima"
+		else
+			text = "🏃 Treinando! " .. (points % Balance.TRAIN_PER_SPEED) .. "/" .. Balance.TRAIN_PER_SPEED .. " para +1 velocidade"
+		end
+	elseif chaser then
 		text = "🏃 Fuja para a zona segura!"
 		place = if zone then safeZonePosition(zone) else nil
 	elseif zone and basketFull then

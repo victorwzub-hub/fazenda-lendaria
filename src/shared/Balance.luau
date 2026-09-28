@@ -18,6 +18,8 @@ Balance.OFFLINE_RATE = 0.5
 Balance.OFFLINE_MAX_SECONDS = 8 * 60 * 60
 Balance.SELL_SECONDS = 20
 Balance.BOOST_SPEED = 8
+Balance.TRAIN_PER_SPEED = 10
+Balance.TRAIN_MAX = 100
 Balance.BASKET_BASE = 20
 Balance.BASKET_PER_LEVEL = 5
 Balance.NET_CHANCE_PER_LEVEL = 0.25
@@ -73,8 +75,12 @@ function Balance.luck(profile, hasLuckPass: boolean, goldenHour: boolean): numbe
 	return luck
 end
 
+function Balance.trainedSpeed(profile): number
+	return math.floor(math.min(profile.training or 0, Balance.TRAIN_MAX) / Balance.TRAIN_PER_SPEED)
+end
+
 function Balance.walkSpeed(profile): number
-	return 16 + 2 * (profile.upgrades.Velocidade or 0)
+	return 16 + 2 * (profile.upgrades.Velocidade or 0) + Balance.trainedSpeed(profile)
 end
 
 -- Pulos no ar além do normal (nv 1 = duplo, nv 2 = triplo).

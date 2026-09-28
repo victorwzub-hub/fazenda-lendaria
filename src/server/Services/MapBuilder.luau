@@ -27,6 +27,7 @@ export type Plot = {
 	spawn: CFrame,
 	sign: TextLabel,
 	animals: Folder,
+	treadmill: BasePart,
 	owner: Player?,
 }
 
@@ -469,6 +470,40 @@ local function buildHub(world: Instance): SpawnLocation
 	return spawn
 end
 
+-- Esteira de treino: a lona empurra para trás (esteira de verdade), então só fica em cima
+-- quem corre para a frente. Quem corre é quem treina (ver TrainingService).
+local TREADMILL_PUSH = 14
+
+local function buildTreadmill(parent: Instance, at: CFrame): BasePart
+	local model = Instance.new("Model")
+	model.Name = "Esteira"
+	model.Parent = parent
+	local frame = Color3.fromRGB(60, 140, 235)
+	block(model, Vector3.new(5.4, 0.8, 11), at * CFrame.new(0, 0.4, 0), frame, Enum.Material.Plastic)
+	local belt = block(model, Vector3.new(4, 0.3, 10.4), at * CFrame.new(0, 0.95, 0), Color3.fromRGB(45, 45, 52))
+	belt.Name = "Lona"
+	belt.AssemblyLinearVelocity = -at.LookVector * TREADMILL_PUSH
+	-- Faixas amarelas mostram o sentido.
+	for z = -4, 4, 2 do
+		decor(block(model, Vector3.new(3.6, 0.05, 0.3), at * CFrame.new(0, 1.12, z), Color3.fromRGB(255, 205, 60)))
+	end
+	for _, x in { -2.4, 2.4 } do
+		block(model, Vector3.new(0.4, 3.4, 0.4), at * CFrame.new(x, 2.5, -4.6), Color3.fromRGB(230, 230, 235), Enum.Material.Metal)
+		block(model, Vector3.new(0.3, 0.3, 4), at * CFrame.new(x, 4, -2.8), Color3.fromRGB(230, 230, 235), Enum.Material.Metal)
+	end
+	local console = block(model, Vector3.new(4.8, 1.6, 1), at * CFrame.new(0, 3.8, -5.2) * CFrame.Angles(rad(25), 0, 0), frame, Enum.Material.Plastic)
+	decor(block(model, Vector3.new(3.4, 1, 0.1), at * CFrame.new(0, 3.85, -4.72) * CFrame.Angles(rad(25), 0, 0), Color3.fromRGB(90, 255, 140), Enum.Material.Neon))
+	textLabel(
+		billboard(console, UDim2.fromScale(12, 2.6), Vector3.new(0, 3.2, 0), 120),
+		"Titulo",
+		"🏃 ESTEIRA DE TREINO",
+		UDim2.fromScale(1, 1),
+		UDim2.fromScale(0, 0),
+		Color3.fromRGB(120, 230, 255)
+	)
+	return belt
+end
+
 local function buildPlot(parent: Instance, index: number): Plot
 	local angle = (index - 0.5) * (2 * math.pi / PLOT_COUNT)
 	local cframe = CFrame.Angles(0, angle, 0) * CFrame.new(0, 1, PLOT_RADIUS)
@@ -518,6 +553,8 @@ local function buildPlot(parent: Instance, index: number): Plot
 		)
 	)
 
+	local treadmill = buildTreadmill(model, cframe * CFrame.new(22, 0, -16))
+
 	local gui = billboard(beam, UDim2.fromScale(18, 3), Vector3.new(0, 2.4, 0), 250)
 	local sign =
 		textLabel(gui, "Dono", "Fazenda livre", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), Color3.new(1, 1, 1))
@@ -532,6 +569,7 @@ local function buildPlot(parent: Instance, index: number): Plot
 		spawn = cframe * CFrame.new(0, 3, -28) * CFrame.Angles(0, math.pi, 0),
 		sign = sign,
 		animals = animals,
+		treadmill = treadmill,
 		owner = nil,
 	}
 end

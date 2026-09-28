@@ -8,6 +8,7 @@ local Balance = require(Shared.Balance)
 local Format = require(Shared.Format)
 local Rarities = require(Shared.Config.Rarities)
 local Species = require(Shared.Config.Species)
+local Style = require(Shared.Style)
 
 local Basket = require(script.Parent.Basket)
 local DataService = require(script.Parent.DataService)
@@ -118,11 +119,95 @@ function FarmService.assignPlot(player: Player)
 			for _, animal in profile.animals do
 				spawnModel(player, animal)
 			end
+			FarmService.decorate(player)
 			return plot
 		end
 	end
 	warn("[FarmService] Sem lotes livres para", player.Name, "- aumente PLOT_COUNT ou reduza o máximo de jogadores")
 	return nil
+end
+
+-- Enfeites da fazenda que aparecem conforme o nível de "Fazenda Maior".
+local DECOR_LEVELS = { silo = 1, flores = 3, postes = 5, moinho = 8, cataVento = 12 }
+
+local function decorPart(parent: Instance, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material?, shape: Enum.PartType?): Part
+	local part = Instance.new("Part")
+	part.Anchored = true
+	part.Size = size
+	part.CFrame = cframe
+	part.Color = color
+	part.Material = material or Enum.Material.Plastic
+	if shape then
+		part.Shape = shape
+	end
+	part.Parent = parent
+	return part
+end
+
+function FarmService.decorate(player: Player)
+	local plot = plotOf[player]
+	local profile = DataService.get(player)
+	if not plot or not profile then
+		return
+	end
+	local level = profile.upgrades.Fazenda or 0
+	plot.sign.Text = "🏡 Fazenda de " .. player.DisplayName .. " • Nv " .. level
+	local plotModel = plot.animals.Parent :: Instance
+	local old = plotModel:FindFirstChild("Melhorias")
+	if old then
+		old:Destroy()
+	end
+	local model = Instance.new("Model")
+	model.Name = "Melhorias"
+	local at = plot.cframe
+
+	if level >= DECOR_LEVELS.silo then
+		local silo = at * CFrame.new(25, 0, 6)
+		decorPart(model, Vector3.new(14, 7, 7), silo * CFrame.new(0, 7, 0) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(200, 50, 45), nil, Enum.PartType.Cylinder)
+		decorPart(model, Vector3.new(1, 7.2, 7.2), silo * CFrame.new(0, 10, 0) * CFrame.Angles(0, 0, math.rad(90)), Color3.new(1, 1, 1), nil, Enum.PartType.Cylinder)
+		decorPart(model, Vector3.one * 7, silo * CFrame.new(0, 14, 0), Color3.fromRGB(190, 195, 205), Enum.Material.Metal, Enum.PartType.Ball)
+	end
+	if level >= DECOR_LEVELS.flores then
+		local colors = { Color3.fromRGB(255, 90, 170), Color3.fromRGB(255, 225, 60), Color3.fromRGB(170, 110, 255) }
+		for _, x in { -9, 9 } do
+			local bed = at * CFrame.new(x, 0, -24)
+			decorPart(model, Vector3.new(6, 0.8, 3), bed * CFrame.new(0, 0.4, 0), Color3.fromRGB(120, 75, 40), Enum.Material.WoodPlanks)
+			for i = 1, 4 do
+				decorPart(model, Vector3.new(0.9, 0.9, 0.9), bed * CFrame.new(-2.25 + i * 0.9, 1.2, (i % 2) * 0.6 - 0.3), colors[(i % #colors) + 1])
+			end
+		end
+	end
+	if level >= DECOR_LEVELS.postes then
+		for _, x in { -31, 31 } do
+			for _, z in { -31, 31 } do
+				local post = at * CFrame.new(x, 0, z)
+				decorPart(model, Vector3.new(0.7, 8, 0.7), post * CFrame.new(0, 4, 0), Color3.fromRGB(50, 50, 60), Enum.Material.Metal)
+				local lamp = decorPart(model, Vector3.new(1.6, 1.4, 1.6), post * CFrame.new(0, 8.6, 0), Color3.fromRGB(255, 230, 140), Enum.Material.Neon)
+				local light = Instance.new("PointLight")
+				light.Color = Color3.fromRGB(255, 220, 150)
+				light.Range = 18
+				light.Brightness = 1.5
+				light.Parent = lamp
+			end
+		end
+	end
+	if level >= DECOR_LEVELS.moinho then
+		local mill = at * CFrame.new(-25, 0, 6)
+		decorPart(model, Vector3.new(5, 14, 5), mill * CFrame.new(0, 7, 0), Color3.fromRGB(245, 240, 230), Enum.Material.WoodPlanks)
+		decorPart(model, Vector3.new(6, 3, 6), mill * CFrame.new(0, 15.5, 0), Color3.fromRGB(200, 50, 45), Enum.Material.WoodPlanks)
+		for i = 0, 3 do
+			decorPart(model, Vector3.new(1.2, 9, 0.3), mill * CFrame.new(0, 12, -2.8) * CFrame.Angles(0, 0, math.rad(i * 90 + 20)) * CFrame.new(0, 4.5, 0), Color3.fromRGB(235, 225, 200), Enum.Material.WoodPlanks)
+		end
+	end
+	if level >= DECOR_LEVELS.cataVento then
+		local top = at * CFrame.new(0, 14.5, 24)
+		decorPart(model, Vector3.new(0.3, 3, 0.3), top * CFrame.new(0, 1.5, 0), Color3.fromRGB(255, 200, 40), Enum.Material.Metal)
+		decorPart(model, Vector3.new(3, 0.5, 0.3), top * CFrame.new(0, 2.6, 0), Color3.fromRGB(255, 200, 40), Enum.Material.Metal)
+		decorPart(model, Vector3.one * 0.9, top * CFrame.new(0, 3.3, 0), Color3.fromRGB(255, 215, 80), Enum.Material.Neon, Enum.PartType.Ball)
+	end
+
+	Style.apply(model)
+	model.Parent = plotModel
 end
 
 function FarmService.releasePlot(player: Player)
@@ -131,6 +216,10 @@ function FarmService.releasePlot(player: Player)
 		plot.owner = nil
 		plot.sign.Text = "Fazenda livre"
 		plot.animals:ClearAllChildren()
+		local decorations = (plot.animals.Parent :: Instance):FindFirstChild("Melhorias")
+		if decorations then
+			decorations:Destroy()
+		end
 	end
 	plotOf[player] = nil
 	modelsOf[player] = nil

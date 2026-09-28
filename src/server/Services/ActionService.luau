@@ -37,6 +37,8 @@ local function buyUpgrade(player: Player, upgradeId: string): (boolean, string?)
 		FarmService.applySpeed(player)
 	elseif upgradeId == "Cesta" then
 		Basket.refresh(player)
+	elseif upgradeId == "Fazenda" then
+		FarmService.decorate(player)
 	end
 	EquipmentService.refresh(player)
 	DataService.push(player)
