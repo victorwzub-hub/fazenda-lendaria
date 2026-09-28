@@ -22,6 +22,12 @@ local EFFECTS: { [string]: (any) -> string } = {
 	Velocidade = function(profile)
 		return "Velocidade: " .. Balance.walkSpeed(profile)
 	end,
+	Rede = function(profile)
+		return string.format("Itens a mais: +%.2f por coleta", Balance.NET_CHANCE_PER_LEVEL * (profile.upgrades.Rede or 0))
+	end,
+	Cesta = function(profile)
+		return "Cesta: " .. Balance.basketCapacity(profile) .. " itens"
+	end,
 }
 
 local function showPrice(button: TextButton, passId: number)
@@ -45,10 +51,9 @@ local function showPrice(button: TextButton, passId: number)
 	end)
 end
 
-return function(content: Frame, profile, ctx)
-	Kit.section("⚒️ Melhorias", 0).Parent = content
-
-	for order, upgradeId in Upgrades.order do
+local function upgradeCards(content: Frame, profile, ctx, ids: { string }, firstOrder: number)
+	for index, upgradeId in ids do
+		local order = firstOrder + index
 		local def = Upgrades.byId[upgradeId]
 		local level = profile.upgrades[upgradeId] or 0
 		local card = Kit.card(92, order)
@@ -90,13 +95,20 @@ return function(content: Frame, profile, ctx)
 			end)
 		end
 	end
+end
 
-	Kit.section("⭐ Passes Premium", 10).Parent = content
+return function(content: Frame, profile, ctx)
+	Kit.section("🎒 Equipamentos", 0).Parent = content
+	upgradeCards(content, profile, ctx, Upgrades.equipment, 0)
+	Kit.section("⚒️ Melhorias da Fazenda", 10).Parent = content
+	upgradeCards(content, profile, ctx, Upgrades.farm, 10)
+
+	Kit.section("⭐ Passes Premium", 20).Parent = content
 
 	for order, key in GamePasses.order do
 		local pass = GamePasses.byId[key]
 		local owned = State.hasPass(key)
-		local card = Kit.card(80, 10 + order, Kit.colors.yellow)
+		local card = Kit.card(80, 20 + order, Kit.colors.yellow)
 		card.Parent = content
 		Kit.label({
 			Text = pass.emoji .. " " .. pass.name,

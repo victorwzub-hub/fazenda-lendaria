@@ -18,6 +18,9 @@ Balance.OFFLINE_RATE = 0.5
 Balance.OFFLINE_MAX_SECONDS = 8 * 60 * 60
 Balance.SELL_SECONDS = 20
 Balance.BOOST_SPEED = 8
+Balance.BASKET_BASE = 20
+Balance.BASKET_PER_LEVEL = 5
+Balance.NET_CHANCE_PER_LEVEL = 0.25
 
 -- Custo para subir da raridade [i] para i+1: { comum, incomum, raro, cristais, moedas (x base da espécie) }
 local EVOLVE_STEPS = {
@@ -72,6 +75,16 @@ end
 
 function Balance.walkSpeed(profile): number
 	return 16 + 2 * (profile.upgrades.Velocidade or 0)
+end
+
+function Balance.basketCapacity(profile): number
+	return Balance.BASKET_BASE + Balance.BASKET_PER_LEVEL * (profile.upgrades.Cesta or 0)
+end
+
+-- Itens a mais da Rede: cada 4 níveis garante +1; o resto é chance de +1.
+function Balance.netBonus(profile, roll: number): number
+	local value = Balance.NET_CHANCE_PER_LEVEL * (profile.upgrades.Rede or 0)
+	return math.floor(value) + (if roll < value % 1 then 1 else 0)
 end
 
 function Balance.doubleDropChance(luck: number): number

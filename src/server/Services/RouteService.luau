@@ -260,6 +260,7 @@ local function collect(player: Player, route, def): boolean
 	if doubled then
 		amount *= 2
 	end
+	amount += Balance.netBonus(profile, rng:NextNumber())
 	-- Vai para a cesta: só vira material de verdade quando o jogador volta para a fazenda.
 	amount = Basket.add(player, def.material, amount)
 	profile.stats.collected += 1

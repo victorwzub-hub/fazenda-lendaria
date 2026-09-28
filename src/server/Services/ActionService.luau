@@ -5,7 +5,9 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Remotes)
 local Upgrades = require(Shared.Config.Upgrades)
 
+local Basket = require(script.Parent.Basket)
 local DataService = require(script.Parent.DataService)
+local EquipmentService = require(script.Parent.EquipmentService)
 local FarmService = require(script.Parent.FarmService)
 local PassService = require(script.Parent.PassService)
 local RouteService = require(script.Parent.RouteService)
@@ -33,7 +35,10 @@ local function buyUpgrade(player: Player, upgradeId: string): (boolean, string?)
 	profile.upgrades[upgradeId] = level + 1
 	if upgradeId == "Velocidade" then
 		FarmService.applySpeed(player)
+	elseif upgradeId == "Cesta" then
+		Basket.refresh(player)
 	end
+	EquipmentService.refresh(player)
 	DataService.push(player)
 	return true, def.emoji .. " " .. def.name .. " nível " .. (level + 1) .. "!"
 end

@@ -23,14 +23,35 @@ Upgrades.byId = {
 		id = "Velocidade",
 		name = "Botas Rápidas",
 		emoji = "👢",
-		desc = "+2 de velocidade para explorar as rotas",
+		desc = "+2 de velocidade para fugir dos guardiões",
 		max = 8,
 		baseCost = 100,
 		growth = 1.8,
 	},
+	Rede = {
+		id = "Rede",
+		name = "Rede de Coleta",
+		emoji = "🥅",
+		desc = "+25% de chance de pegar 1 item a mais em cada coleta",
+		max = 8,
+		baseCost = 150,
+		growth = 1.8,
+	},
+	Cesta = {
+		id = "Cesta",
+		name = "Cesta Maior",
+		emoji = "🧺",
+		desc = "+5 de espaço na cesta antes de voltar para casa",
+		max = 10,
+		baseCost = 120,
+		growth = 1.75,
+	},
 }
 
-Upgrades.order = { "Sorte", "Fazenda", "Velocidade" }
+-- Equipamentos aparecem no boneco; melhorias da fazenda não.
+Upgrades.equipment = { "Velocidade", "Rede", "Cesta" }
+Upgrades.farm = { "Sorte", "Fazenda" }
+Upgrades.order = { "Sorte", "Fazenda", "Velocidade", "Rede", "Cesta" }
 
 function Upgrades.cost(id: string, level: number): number
 	local def = Upgrades.byId[id]

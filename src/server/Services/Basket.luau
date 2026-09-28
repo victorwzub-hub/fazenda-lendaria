@@ -2,13 +2,14 @@
 -- Só vira material de verdade (profile.materials) quando ele volta para a fazenda.
 -- Não é salva: sair do jogo guarda tudo automaticamente (ver init.server).
 local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Balance = require(ReplicatedStorage:WaitForChild("Shared").Balance)
 
 local DataService = require(script.Parent.DataService)
 local Notify = require(script.Parent.Notify)
 
 local Basket = {}
-
-Basket.BASE_CAPACITY = 20
 
 local baskets: { [Player]: { [string]: number } } = {}
 
@@ -27,8 +28,9 @@ local function sync(player: Player)
 	player:SetAttribute("CestaItens", HttpService:JSONEncode(basket))
 end
 
-function Basket.capacity(_player: Player): number
-	return Basket.BASE_CAPACITY
+function Basket.capacity(player: Player): number
+	local profile = DataService.get(player)
+	return if profile then Balance.basketCapacity(profile) else Balance.BASKET_BASE
 end
 
 function Basket.count(player: Player): number
@@ -104,6 +106,9 @@ end
 function Basket.setup(player: Player)
 	sync(player)
 end
+
+-- Recalcula a capacidade (depois de comprar Cesta Maior).
+Basket.refresh = sync
 
 function Basket.release(player: Player)
 	Basket.deposit(player, true)
