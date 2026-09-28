@@ -1,9 +1,10 @@
--- Treino na esteira: quem fica em cima da lona (e para isso precisa correr, porque ela
--- empurra para trás) ganha 1 ponto a cada 3 s; cada 10 pontos = +1 de velocidade, até +10.
+-- Treino na esteira: quem está em cima da lona corre sozinho (animação no cliente) e ganha
+-- Balance.TRAIN_GAIN pontos por segundo; cada TRAIN_PER_SPEED pontos = +1 de velocidade.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Balance = require(ReplicatedStorage:WaitForChild("Shared").Balance)
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Balance = require(Shared.Balance)
 
 local DataService = require(script.Parent.DataService)
 local FarmService = require(script.Parent.FarmService)
@@ -12,7 +13,7 @@ local Notify = require(script.Parent.Notify)
 local TrainingService = {}
 
 local TICK = 0.5
-local SECONDS_PER_POINT = 3
+local SECONDS_PER_GAIN = 1
 
 local belts: { BasePart } = {}
 local progress: { [Player]: number } = {}
@@ -42,20 +43,21 @@ local function tick(player: Player)
 		return
 	end
 	progress[player] = (progress[player] or 0) + TICK
-	if progress[player] < SECONDS_PER_POINT then
+	if progress[player] < SECONDS_PER_GAIN then
 		return
 	end
 	progress[player] = 0
 	local before = Balance.trainedSpeed(profile)
-	profile.training = (profile.training or 0) + 1
+	profile.training = math.min((profile.training or 0) + Balance.TRAIN_GAIN, Balance.TRAIN_MAX)
 	player:SetAttribute("Treino", profile.training)
 	if Balance.trainedSpeed(profile) > before then
 		FarmService.applySpeed(player)
 		DataService.push(player)
 		Notify.toast(
 			player,
-			"🏃 +1 de velocidade pelo treino! Agora: " .. Balance.walkSpeed(profile),
-			Color3.fromRGB(120, 230, 255)
+			"⚡ +1 de velocidade pelo treino! Agora: " .. Balance.walkSpeed(profile),
+			Color3.fromRGB(120, 230, 255),
+			"boost"
 		)
 	end
 end

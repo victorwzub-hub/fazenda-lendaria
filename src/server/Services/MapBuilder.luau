@@ -470,31 +470,54 @@ local function buildHub(world: Instance): SpawnLocation
 	return spawn
 end
 
--- Esteira de treino: a lona empurra para trás (esteira de verdade), então só fica em cima
--- quem corre para a frente. Quem corre é quem treina (ver TrainingService).
-local TREADMILL_PUSH = 14
+-- Esteira de treino no estilo dos simuladores: lona escura larga com setas brancas que
+-- andam (animadas no cliente) e moldura laranja. Quem sobe corre sozinho e treina
+-- (ver TrainingService e o cliente Treadmill). Para sair, é só andar para fora.
+local TREADMILL_BELT = Vector3.new(7, 0.3, 10)
+local CHEVRON_COUNT = 5
 
 local function buildTreadmill(parent: Instance, at: CFrame): BasePart
 	local model = Instance.new("Model")
 	model.Name = "Esteira"
 	model.Parent = parent
-	local frame = Color3.fromRGB(60, 140, 235)
-	block(model, Vector3.new(5.4, 0.8, 11), at * CFrame.new(0, 0.4, 0), frame, Enum.Material.Plastic)
-	local belt = block(model, Vector3.new(4, 0.3, 10.4), at * CFrame.new(0, 0.95, 0), Color3.fromRGB(45, 45, 52))
+	local frame = Color3.fromRGB(255, 150, 40)
+	block(model, Vector3.new(TREADMILL_BELT.X + 1.6, 0.9, TREADMILL_BELT.Z + 1.6), at * CFrame.new(0, 0.45, 0), frame, Enum.Material.Plastic)
+	local belt = block(model, TREADMILL_BELT, at * CFrame.new(0, 1.05, 0), Color3.fromRGB(28, 32, 58))
 	belt.Name = "Lona"
-	belt.AssemblyLinearVelocity = -at.LookVector * TREADMILL_PUSH
-	-- Faixas amarelas mostram o sentido.
-	for z = -4, 4, 2 do
-		decor(block(model, Vector3.new(3.6, 0.05, 0.3), at * CFrame.new(0, 1.12, z), Color3.fromRGB(255, 205, 60)))
+
+	-- Setas ">" apontando para a frente; o cliente faz elas correrem para trás.
+	local chevrons = Instance.new("Folder")
+	chevrons.Name = "Setas"
+	chevrons.Parent = model
+	for i = 1, CHEVRON_COUNT do
+		local chevron = Instance.new("Model")
+		chevron.Name = "Seta"
+		for _, side in { -1, 1 } do
+			local arm = decor(
+				block(
+					chevron,
+					Vector3.new(0.7, 0.06, 3),
+					CFrame.new(side * 1.05, 0, 0.55) * CFrame.Angles(0, side * rad(-38), 0),
+					Color3.fromRGB(235, 238, 250)
+				)
+			)
+			arm.CastShadow = false
+		end
+		chevron.WorldPivot = CFrame.identity
+		chevron:SetAttribute("Indice", i)
+		chevron:PivotTo(at * CFrame.new(0, 1.23, -TREADMILL_BELT.Z / 2 + (i - 0.5) * TREADMILL_BELT.Z / CHEVRON_COUNT))
+		chevron.Parent = chevrons
 	end
-	for _, x in { -2.4, 2.4 } do
-		block(model, Vector3.new(0.4, 3.4, 0.4), at * CFrame.new(x, 2.5, -4.6), Color3.fromRGB(230, 230, 235), Enum.Material.Metal)
-		block(model, Vector3.new(0.3, 0.3, 4), at * CFrame.new(x, 4, -2.8), Color3.fromRGB(230, 230, 235), Enum.Material.Metal)
+
+	-- Painel na frente com tela e duas alças, como o dos simuladores.
+	local front = at * CFrame.new(0, 0, -TREADMILL_BELT.Z / 2 - 1.3)
+	for _, x in { -2.6, 2.6 } do
+		block(model, Vector3.new(1, 4.6, 1), front * CFrame.new(x, 2.3, 0), frame, Enum.Material.Plastic)
 	end
-	local console = block(model, Vector3.new(4.8, 1.6, 1), at * CFrame.new(0, 3.8, -5.2) * CFrame.Angles(rad(25), 0, 0), frame, Enum.Material.Plastic)
-	decor(block(model, Vector3.new(3.4, 1, 0.1), at * CFrame.new(0, 3.85, -4.72) * CFrame.Angles(rad(25), 0, 0), Color3.fromRGB(90, 255, 140), Enum.Material.Neon))
+	local console = block(model, Vector3.new(6.2, 1.8, 1.2), front * CFrame.new(0, 4.4, 0) * CFrame.Angles(rad(20), 0, 0), frame, Enum.Material.Plastic)
+	decor(block(model, Vector3.new(4.4, 1.1, 0.1), front * CFrame.new(0, 4.45, 0.62) * CFrame.Angles(rad(20), 0, 0), Color3.fromRGB(40, 60, 110), Enum.Material.Neon))
 	textLabel(
-		billboard(console, UDim2.fromScale(12, 2.6), Vector3.new(0, 3.2, 0), 120),
+		billboard(console, UDim2.fromOffset(300, 56), Vector3.new(0, 4, 0), 140),
 		"Titulo",
 		"🏃 ESTEIRA DE TREINO",
 		UDim2.fromScale(1, 1),
@@ -553,7 +576,7 @@ local function buildPlot(parent: Instance, index: number): Plot
 		)
 	)
 
-	local treadmill = buildTreadmill(model, cframe * CFrame.new(22, 0, -16))
+	local treadmill = buildTreadmill(model, cframe * CFrame.new(21, 0, -16))
 
 	local gui = billboard(beam, UDim2.fromScale(18, 3), Vector3.new(0, 2.4, 0), 250)
 	local sign =

@@ -26,6 +26,8 @@ local luckLabel: TextLabel
 local basketLabel: TextLabel
 local basketScale: UIScale
 local boostLabels: { [string]: TextLabel } = {}
+local speedLabel: TextLabel
+local speedScale: UIScale
 
 -- Boosts ativos (mesmos ids do BoostService no servidor).
 local BOOSTS = {
@@ -234,6 +236,17 @@ function Hud.mount(gui: ScreenGui, scales: { UIScale }, menu: { MenuEntry })
 		Size = UDim2.fromOffset(420, 42),
 		Parent = money,
 	}, { boostLayout })
+	-- Velocidade atual sempre à mostra: é onde o treino e as botas aparecem.
+	speedLabel = bigText({
+		Text = "⚡ 16",
+		TextSize = 30,
+		TextColor3 = Color3.fromRGB(255, 225, 70),
+		Size = UDim2.fromOffset(0, 40),
+		AutomaticSize = Enum.AutomaticSize.X,
+		LayoutOrder = 0,
+		Parent = boostRow,
+	}, 3)
+	speedScale = Kit.new("UIScale", { Parent = speedLabel })
 	for order, boost in BOOSTS do
 		boostLabels[boost.id] = bigText({
 			Text = boost.emoji,
@@ -318,6 +331,15 @@ end
 
 function Hud.tick()
 	local player = Players.LocalPlayer
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		local text = "⚡ " .. math.floor(humanoid.WalkSpeed + 0.5)
+		if speedLabel.Text ~= text then
+			speedLabel.Text = text
+			speedScale.Scale = 1.4
+			TweenService:Create(speedScale, TweenInfo.new(0.35, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+		end
+	end
 	local now = Workspace:GetServerTimeNow()
 	for _, boost in BOOSTS do
 		local left = (player:GetAttribute("Boost" .. boost.id) or 0) - now

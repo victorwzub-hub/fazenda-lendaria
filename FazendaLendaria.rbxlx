@@ -337,8 +337,10 @@ Balance.OFFLINE_RATE = 0.5
 Balance.OFFLINE_MAX_SECONDS = 8 * 60 * 60
 Balance.SELL_SECONDS = 20
 Balance.BOOST_SPEED = 8
-Balance.TRAIN_PER_SPEED = 10
-Balance.TRAIN_MAX = 100
+-- Treino: +10 pontos por segundo em cima da esteira; 120 pontos = +1 de velocidade (até +15).
+Balance.TRAIN_GAIN = 10
+Balance.TRAIN_PER_SPEED = 120
+Balance.TRAIN_MAX = 1800
 Balance.BASKET_BASE = 20
 Balance.BASKET_PER_LEVEL = 5
 Balance.NET_CHANCE_PER_LEVEL = 0.25
@@ -3156,31 +3158,54 @@ local function buildHub(world: Instance): SpawnLocation
 	return spawn
 end
 
--- Esteira de treino: a lona empurra para trás (esteira de verdade), então só fica em cima
--- quem corre para a frente. Quem corre é quem treina (ver TrainingService).
-local TREADMILL_PUSH = 14
+-- Esteira de treino no estilo dos simuladores: lona escura larga com setas brancas que
+-- andam (animadas no cliente) e moldura laranja. Quem sobe corre sozinho e treina
+-- (ver TrainingService e o cliente Treadmill). Para sair, é só andar para fora.
+local TREADMILL_BELT = Vector3.new(7, 0.3, 10)
+local CHEVRON_COUNT = 5
 
 local function buildTreadmill(parent: Instance, at: CFrame): BasePart
 	local model = Instance.new("Model")
 	model.Name = "Esteira"
 	model.Parent = parent
-	local frame = Color3.fromRGB(60, 140, 235)
-	block(model, Vector3.new(5.4, 0.8, 11), at * CFrame.new(0, 0.4, 0), frame, Enum.Material.Plastic)
-	local belt = block(model, Vector3.new(4, 0.3, 10.4), at * CFrame.new(0, 0.95, 0), Color3.fromRGB(45, 45, 52))
+	local frame = Color3.fromRGB(255, 150, 40)
+	block(model, Vector3.new(TREADMILL_BELT.X + 1.6, 0.9, TREADMILL_BELT.Z + 1.6), at * CFrame.new(0, 0.45, 0), frame, Enum.Material.Plastic)
+	local belt = block(model, TREADMILL_BELT, at * CFrame.new(0, 1.05, 0), Color3.fromRGB(28, 32, 58))
 	belt.Name = "Lona"
-	belt.AssemblyLinearVelocity = -at.LookVector * TREADMILL_PUSH
-	-- Faixas amarelas mostram o sentido.
-	for z = -4, 4, 2 do
-		decor(block(model, Vector3.new(3.6, 0.05, 0.3), at * CFrame.new(0, 1.12, z), Color3.fromRGB(255, 205, 60)))
+
+	-- Setas ">" apontando para a frente; o cliente faz elas correrem para trás.
+	local chevrons = Instance.new("Folder")
+	chevrons.Name = "Setas"
+	chevrons.Parent = model
+	for i = 1, CHEVRON_COUNT do
+		local chevron = Instance.new("Model")
+		chevron.Name = "Seta"
+		for _, side in { -1, 1 } do
+			local arm = decor(
+				block(
+					chevron,
+					Vector3.new(0.7, 0.06, 3),
+					CFrame.new(side * 1.05, 0, 0.55) * CFrame.Angles(0, side * rad(-38), 0),
+					Color3.fromRGB(235, 238, 250)
+				)
+			)
+			arm.CastShadow = false
+		end
+		chevron.WorldPivot = CFrame.identity
+		chevron:SetAttribute("Indice", i)
+		chevron:PivotTo(at * CFrame.new(0, 1.23, -TREADMILL_BELT.Z / 2 + (i - 0.5) * TREADMILL_BELT.Z / CHEVRON_COUNT))
+		chevron.Parent = chevrons
 	end
-	for _, x in { -2.4, 2.4 } do
-		block(model, Vector3.new(0.4, 3.4, 0.4), at * CFrame.new(x, 2.5, -4.6), Color3.fromRGB(230, 230, 235), Enum.Material.Metal)
-		block(model, Vector3.new(0.3, 0.3, 4), at * CFrame.new(x, 4, -2.8), Color3.fromRGB(230, 230, 235), Enum.Material.Metal)
+
+	-- Painel na frente com tela e duas alças, como o dos simuladores.
+	local front = at * CFrame.new(0, 0, -TREADMILL_BELT.Z / 2 - 1.3)
+	for _, x in { -2.6, 2.6 } do
+		block(model, Vector3.new(1, 4.6, 1), front * CFrame.new(x, 2.3, 0), frame, Enum.Material.Plastic)
 	end
-	local console = block(model, Vector3.new(4.8, 1.6, 1), at * CFrame.new(0, 3.8, -5.2) * CFrame.Angles(rad(25), 0, 0), frame, Enum.Material.Plastic)
-	decor(block(model, Vector3.new(3.4, 1, 0.1), at * CFrame.new(0, 3.85, -4.72) * CFrame.Angles(rad(25), 0, 0), Color3.fromRGB(90, 255, 140), Enum.Material.Neon))
+	local console = block(model, Vector3.new(6.2, 1.8, 1.2), front * CFrame.new(0, 4.4, 0) * CFrame.Angles(rad(20), 0, 0), frame, Enum.Material.Plastic)
+	decor(block(model, Vector3.new(4.4, 1.1, 0.1), front * CFrame.new(0, 4.45, 0.62) * CFrame.Angles(rad(20), 0, 0), Color3.fromRGB(40, 60, 110), Enum.Material.Neon))
 	textLabel(
-		billboard(console, UDim2.fromScale(12, 2.6), Vector3.new(0, 3.2, 0), 120),
+		billboard(console, UDim2.fromOffset(300, 56), Vector3.new(0, 4, 0), 140),
 		"Titulo",
 		"🏃 ESTEIRA DE TREINO",
 		UDim2.fromScale(1, 1),
@@ -3239,7 +3264,7 @@ local function buildPlot(parent: Instance, index: number): Plot
 		)
 	)
 
-	local treadmill = buildTreadmill(model, cframe * CFrame.new(22, 0, -16))
+	local treadmill = buildTreadmill(model, cframe * CFrame.new(21, 0, -16))
 
 	local gui = billboard(beam, UDim2.fromScale(18, 3), Vector3.new(0, 2.4, 0), 250)
 	local sign =
@@ -4160,12 +4185,13 @@ function Teleport.to(player: Player, target: CFrame): boolean
 end
 
 return Teleport
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">TrainingService</string><ProtectedString name="Source"><![CDATA[-- Treino na esteira: quem fica em cima da lona (e para isso precisa correr, porque ela
--- empurra para trás) ganha 1 ponto a cada 3 s; cada 10 pontos = +1 de velocidade, até +10.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">TrainingService</string><ProtectedString name="Source"><![CDATA[-- Treino na esteira: quem está em cima da lona corre sozinho (animação no cliente) e ganha
+-- Balance.TRAIN_GAIN pontos por segundo; cada TRAIN_PER_SPEED pontos = +1 de velocidade.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Balance = require(ReplicatedStorage:WaitForChild("Shared").Balance)
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Balance = require(Shared.Balance)
 
 local DataService = require(script.Parent.DataService)
 local FarmService = require(script.Parent.FarmService)
@@ -4174,7 +4200,7 @@ local Notify = require(script.Parent.Notify)
 local TrainingService = {}
 
 local TICK = 0.5
-local SECONDS_PER_POINT = 3
+local SECONDS_PER_GAIN = 1
 
 local belts: { BasePart } = {}
 local progress: { [Player]: number } = {}
@@ -4204,20 +4230,21 @@ local function tick(player: Player)
 		return
 	end
 	progress[player] = (progress[player] or 0) + TICK
-	if progress[player] < SECONDS_PER_POINT then
+	if progress[player] < SECONDS_PER_GAIN then
 		return
 	end
 	progress[player] = 0
 	local before = Balance.trainedSpeed(profile)
-	profile.training = (profile.training or 0) + 1
+	profile.training = math.min((profile.training or 0) + Balance.TRAIN_GAIN, Balance.TRAIN_MAX)
 	player:SetAttribute("Treino", profile.training)
 	if Balance.trainedSpeed(profile) > before then
 		FarmService.applySpeed(player)
 		DataService.push(player)
 		Notify.toast(
 			player,
-			"🏃 +1 de velocidade pelo treino! Agora: " .. Balance.walkSpeed(profile),
-			Color3.fromRGB(120, 230, 255)
+			"⚡ +1 de velocidade pelo treino! Agora: " .. Balance.walkSpeed(profile),
+			Color3.fromRGB(120, 230, 255),
+			"boost"
 		)
 	end
 end
@@ -4337,7 +4364,7 @@ end
 
 return TreasureService
 ]]></ProtectedString></Properties></Item></Item></Item></Item>
-<Item class="StarterPlayer" referent="RBX00000034"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000033"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000032"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+<Item class="StarterPlayer" referent="RBX00000035"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000034"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000033"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -4349,6 +4376,7 @@ local Guide = require(script.Guide)
 local Effects = require(script.Effects)
 local DoubleJump = require(script.DoubleJump)
 local Sfx = require(script.Sfx)
+local Treadmill = require(script.Treadmill)
 local Welcome = require(script.UI.Welcome)
 local Hud = require(script.UI.Hud)
 local Kit = require(script.UI.Kit)
@@ -4523,6 +4551,7 @@ Guide.start()
 Effects.start()
 DoubleJump.start()
 Sfx.start()
+Treadmill.start()
 
 -- Galo cantando quando o Galo Bravo começa a correr atrás de você.
 player:GetAttributeChangedSignal("Perseguido"):Connect(function()
@@ -5126,7 +5155,192 @@ function State.start()
 end
 
 return State
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000030"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX00000025"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000025"><Properties><string name="Name">Treadmill</string><ProtectedString name="Source"><![CDATA[-- Visual da esteira no cliente: setas da lona correndo, boneco correndo sozinho,
+-- "+10 ⚡" subindo a cada ganho e aura de fogo enquanto treina.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local Style = require(ReplicatedStorage:WaitForChild("Shared").Style)
+
+local Treadmill = {}
+
+local BELT_SPEED = 7 -- studs/s das setas
+local RUN_ANIMATION_SPEED = 1.6
+local FLAME = "rbxasset://textures/particles/fire_main.dds"
+
+local player = Players.LocalPlayer
+local runTrack: AnimationTrack? = nil
+local aura: ParticleEmitter? = nil
+
+type Chevron = { model: Model, belt: BasePart, base: number }
+local chevrons: { Chevron } = {}
+
+local function collectChevrons()
+	local lotes = Workspace:WaitForChild("Mundo"):WaitForChild("Lotes")
+	for _, lote in lotes:GetChildren() do
+		local esteira = lote:FindFirstChild("Esteira")
+		local belt = esteira and esteira:FindFirstChild("Lona")
+		local setas = esteira and esteira:FindFirstChild("Setas")
+		if belt and setas then
+			for _, seta in setas:GetChildren() do
+				if seta:IsA("Model") then
+					local local_ = (belt :: BasePart).CFrame:PointToObjectSpace(seta:GetPivot().Position)
+					table.insert(chevrons, { model = seta, belt = belt :: BasePart, base = local_.Z })
+				end
+			end
+		end
+	end
+end
+
+-- Setas andam para trás (de quem corre) e voltam para a frente ao chegar no fim.
+local function animateChevrons()
+	local shift = os.clock() * BELT_SPEED
+	for _, chevron in chevrons do
+		local length = chevron.belt.Size.Z
+		local z = (chevron.base + length / 2 + shift) % length - length / 2
+		chevron.model:PivotTo(chevron.belt.CFrame * CFrame.new(0, chevron.belt.Size.Y / 2 + 0.03, z))
+	end
+end
+
+local function nearestBelt(root: BasePart): BasePart?
+	for _, chevron in chevrons do
+		local rel = chevron.belt.CFrame:PointToObjectSpace(root.Position)
+		if math.abs(rel.X) <= chevron.belt.Size.X / 2 + 0.3 and math.abs(rel.Z) <= chevron.belt.Size.Z / 2 then
+			return chevron.belt
+		end
+	end
+	return nil
+end
+
+local function startRunning(character: Model, belt: BasePart)
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+	if not humanoid or not root or not animator then
+		return
+	end
+	-- Vira o boneco para a frente da esteira (o painel fica em -Z da lona).
+	local forward = -belt.CFrame.LookVector
+	forward = Vector3.new(forward.X, 0, forward.Z).Unit
+	root.CFrame = CFrame.lookAt(root.Position, root.Position - forward)
+
+	local animate = character:FindFirstChild("Animate")
+	local runFolder = animate and animate:FindFirstChild("run")
+	local animation = runFolder and runFolder:FindFirstChildOfClass("Animation")
+	if animation then
+		runTrack = animator:LoadAnimation(animation)
+		local track = runTrack :: AnimationTrack
+		track.Looped = true
+		track.Priority = Enum.AnimationPriority.Action
+		track:Play(0.2, 1, RUN_ANIMATION_SPEED)
+	end
+
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = "AuraTreino"
+	emitter.Texture = FLAME
+	emitter.Color = ColorSequence.new(Color3.fromRGB(255, 220, 60), Color3.fromRGB(255, 70, 30))
+	emitter.LightEmission = 0.8
+	emitter.Rate = 40
+	emitter.Lifetime = NumberRange.new(0.4, 0.7)
+	emitter.Speed = NumberRange.new(4, 7)
+	emitter.SpreadAngle = Vector2.new(30, 30)
+	emitter.EmissionDirection = Enum.NormalId.Top
+	emitter.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 2.2),
+		NumberSequenceKeypoint.new(1, 0.4),
+	})
+	emitter.Transparency = NumberSequence.new(0.2, 1)
+	emitter.Parent = root
+	aura = emitter
+end
+
+local function stopRunning()
+	if runTrack then
+		runTrack:Stop(0.2)
+		runTrack = nil
+	end
+	if aura then
+		aura:Destroy()
+		aura = nil
+	end
+end
+
+-- "+10 ⚡" que sobe e some em cima do boneco.
+local function popup(amount: number)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then
+		return
+	end
+	local anchor = Instance.new("Part")
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.CanTouch = false
+	anchor.Transparency = 1
+	anchor.Size = Vector3.one * 0.2
+	anchor.CFrame = CFrame.new(root.Position + Vector3.new(math.random(-20, 20) / 10, 2, math.random(-20, 20) / 10))
+	anchor.Parent = Workspace.CurrentCamera
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromScale(5, 1.6)
+	gui.AlwaysOnTop = true
+	gui.LightInfluence = 0
+	gui.Parent = anchor
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.FredokaOne
+	label.Text = "👟+" .. amount
+	label.TextScaled = true
+	label.TextColor3 = Color3.fromRGB(120, 200, 255)
+	Style.outline(label, 3)
+	label.Parent = gui
+	local info = TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(anchor, info, { CFrame = anchor.CFrame + Vector3.new(0, 4, 0) }):Play()
+	TweenService:Create(label, info, { TextTransparency = 1 }):Play()
+	task.delay(1.2, function()
+		anchor:Destroy()
+	end)
+end
+
+function Treadmill.start()
+	collectChevrons()
+	RunService.RenderStepped:Connect(animateChevrons)
+
+	local running = false
+	RunService.Heartbeat:Connect(function()
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local belt = root and nearestBelt(root)
+		if belt and not running then
+			running = true
+			startRunning(character :: Model, belt)
+		elseif not belt and running then
+			running = false
+			stopRunning()
+		end
+	end)
+	player.CharacterAdded:Connect(function()
+		running = false
+		runTrack = nil
+		aura = nil
+	end)
+
+	local last = player:GetAttribute("Treino") or 0
+	player:GetAttributeChangedSignal("Treino"):Connect(function()
+		local now = player:GetAttribute("Treino") or 0
+		if now > last then
+			popup(now - last)
+		end
+		last = now
+	end)
+end
+
+return Treadmill
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000031"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX00000026"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
@@ -5154,6 +5368,8 @@ local luckLabel: TextLabel
 local basketLabel: TextLabel
 local basketScale: UIScale
 local boostLabels: { [string]: TextLabel } = {}
+local speedLabel: TextLabel
+local speedScale: UIScale
 
 -- Boosts ativos (mesmos ids do BoostService no servidor).
 local BOOSTS = {
@@ -5362,6 +5578,17 @@ function Hud.mount(gui: ScreenGui, scales: { UIScale }, menu: { MenuEntry })
 		Size = UDim2.fromOffset(420, 42),
 		Parent = money,
 	}, { boostLayout })
+	-- Velocidade atual sempre à mostra: é onde o treino e as botas aparecem.
+	speedLabel = bigText({
+		Text = "⚡ 16",
+		TextSize = 30,
+		TextColor3 = Color3.fromRGB(255, 225, 70),
+		Size = UDim2.fromOffset(0, 40),
+		AutomaticSize = Enum.AutomaticSize.X,
+		LayoutOrder = 0,
+		Parent = boostRow,
+	}, 3)
+	speedScale = Kit.new("UIScale", { Parent = speedLabel })
 	for order, boost in BOOSTS do
 		boostLabels[boost.id] = bigText({
 			Text = boost.emoji,
@@ -5446,6 +5673,15 @@ end
 
 function Hud.tick()
 	local player = Players.LocalPlayer
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		local text = "⚡ " .. math.floor(humanoid.WalkSpeed + 0.5)
+		if speedLabel.Text ~= text then
+			speedLabel.Text = text
+			speedScale.Scale = 1.4
+			TweenService:Create(speedScale, TweenInfo.new(0.35, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+		end
+	end
 	local now = Workspace:GetServerTimeNow()
 	for _, boost in BOOSTS do
 		local left = (player:GetAttribute("Boost" .. boost.id) or 0) - now
@@ -5468,7 +5704,7 @@ function Hud.tick()
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000026"><Properties><string name="Name">Kit</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000027"><Properties><string name="Name">Kit</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
 
 local Kit = {}
 
@@ -5613,7 +5849,7 @@ function Kit.section(text: string, order: number): TextLabel
 end
 
 return Kit
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000027"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000028"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
 
 local Kit = require(script.Parent.Kit)
 
@@ -5838,7 +6074,7 @@ function Notifications.reveal(payload)
 end
 
 return Notifications
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX0000002D"><Properties><string name="Name">Pages</string></Properties><Item class="ModuleScript" referent="RBX00000028"><Properties><string name="Name">Animais</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX0000002E"><Properties><string name="Name">Pages</string></Properties><Item class="ModuleScript" referent="RBX00000029"><Properties><string name="Name">Animais</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
@@ -6017,7 +6253,7 @@ return function(content: Frame, profile, ctx)
 		sellButton(buttons, animal, ctx)
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000029"><Properties><string name="Name">Indice</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002A"><Properties><string name="Name">Indice</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Rarities = require(Shared.Config.Rarities)
@@ -6081,7 +6317,7 @@ return function(content: Frame, profile, _ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002A"><Properties><string name="Name">Loja</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002B"><Properties><string name="Name">Loja</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -6233,7 +6469,7 @@ return function(content: Frame, profile, ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002B"><Properties><string name="Name">Mochila</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002C"><Properties><string name="Name">Mochila</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Format = require(Shared.Format)
@@ -6304,7 +6540,7 @@ return function(content: Frame, profile, _ctx)
 		})
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002C"><Properties><string name="Name">Rotas</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002D"><Properties><string name="Name">Rotas</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
@@ -6401,7 +6637,7 @@ return function(content: Frame, profile, ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX0000002E"><Properties><string name="Name">Panel</string><ProtectedString name="Source"><![CDATA[local Kit = require(script.Parent.Kit)
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX0000002F"><Properties><string name="Name">Panel</string><ProtectedString name="Source"><![CDATA[local Kit = require(script.Parent.Kit)
 
 export type Context = {
 	act: (action: string, arg: string?) -> (boolean, any),
@@ -6523,7 +6759,7 @@ function Panel:refreshCosts(coins: number)
 end
 
 return Panel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002F"><Properties><string name="Name">Welcome</string><ProtectedString name="Source"><![CDATA[-- Janela "Bem-vindo de volta!" com os ganhos offline (as moedas já entraram no servidor;
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000030"><Properties><string name="Name">Welcome</string><ProtectedString name="Source"><![CDATA[-- Janela "Bem-vindo de volta!" com os ganhos offline (as moedas já entraram no servidor;
 -- o botão só fecha a janela com festa).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -6643,7 +6879,7 @@ function Welcome.show(gui: ScreenGui, scales: { UIScale }, amount: number, secon
 end
 
 return Welcome
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000031"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000032"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -6712,5 +6948,5 @@ end
 
 return World
 ]]></ProtectedString></Properties></Item></Item></Item></Item>
-<Item class="Lighting" referent="RBX00000035"><Properties><string name="Name">Lighting</string><token name="Technology">4</token></Properties></Item>
+<Item class="Lighting" referent="RBX00000036"><Properties><string name="Name">Lighting</string><token name="Technology">4</token></Properties></Item>
 </roblox>
