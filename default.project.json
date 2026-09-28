@@ -22,6 +22,14 @@
           "$path": "src/client"
         }
       }
+    },
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Technology": {
+          "Enum": 4
+        }
+      }
     }
   }
 }

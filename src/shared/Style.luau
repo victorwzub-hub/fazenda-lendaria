@@ -14,24 +14,39 @@ local TOY: { [Enum.Material]: boolean } = {
 	[Enum.Material.Fabric] = true,
 }
 
--- Área mínima do topo para ganhar studs; peças pequenas ficam lisas e não poluem.
-local MIN_STUD_AREA = 6
-
 local function vivid(color: Color3): Color3
 	local h, s, v = color:ToHSV()
 	return Color3.fromHSV(h, math.min(1, s * 1.2), math.min(1, v * 1.08))
 end
 
+-- Pecinhas em todas as faces (paredes, troncos, laterais), não só no topo:
+-- é isso que dá o visual "LEGO" dos simuladores.
+function Style.studs(part: BasePart)
+	part.TopSurface = Enum.SurfaceType.Studs
+	part.FrontSurface = Enum.SurfaceType.Studs
+	part.BackSurface = Enum.SurfaceType.Studs
+	part.LeftSurface = Enum.SurfaceType.Studs
+	part.RightSurface = Enum.SurfaceType.Studs
+	part.BottomSurface = Enum.SurfaceType.Inlet
+end
+
 function Style.toy(part: BasePart)
-	if not TOY[part.Material] then
-		return
-	end
-	part.Material = Enum.Material.Plastic
-	part.Color = vivid(part.Color)
 	local isBlock = part:IsA("WedgePart") or (part:IsA("Part") and part.Shape == Enum.PartType.Block)
-	if isBlock and part.Size.X * part.Size.Z >= MIN_STUD_AREA then
-		part.TopSurface = Enum.SurfaceType.Studs
+	if TOY[part.Material] then
+		part.Material = Enum.Material.Plastic
+		part.Color = vivid(part.Color)
 	end
+	if isBlock and part.Material == Enum.Material.Plastic then
+		Style.studs(part)
+	end
+end
+
+-- Cor um pouco mais clara ou escura, para montar objetos em dois tons.
+function Style.shade(color: Color3, amount: number): Color3
+	if amount >= 0 then
+		return color:Lerp(Color3.new(1, 1, 1), amount)
+	end
+	return color:Lerp(Color3.new(0, 0, 0), -amount)
 end
 
 function Style.apply(root: Instance)

@@ -15,10 +15,20 @@ const ref = () => `RBX${(nextRef++).toString(16).toUpperCase().padStart(8, '0')}
 const escapeXml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const cdata = (s) => `<![CDATA[${s.replaceAll(']]>', ']]]]><![CDATA[>')}]]>`;
 
-function item(className, name, children = [], source = null) {
+function item(className, name, children = [], source = null, properties = {}) {
   const props = [`<string name="Name">${escapeXml(name)}</string>`];
   if (source !== null) props.push(`<ProtectedString name="Source">${cdata(source)}</ProtectedString>`);
+  for (const [key, value] of Object.entries(properties)) props.push(property(key, value));
   return `<Item class="${className}" referent="${ref()}"><Properties>${props.join('')}</Properties>${children.join('')}</Item>`;
+}
+
+// Propriedades explícitas no formato do Rojo: { "Enum": 4 }, { "Float32": 1.5 }, { "Bool": true }.
+function property(key, value) {
+  const [type, raw] = Object.entries(value)[0];
+  if (type === 'Enum') return `<token name="${key}">${raw}</token>`;
+  if (type === 'Float32') return `<float name="${key}">${raw}</float>`;
+  if (type === 'Bool') return `<bool name="${key}">${raw}</bool>`;
+  throw new Error(`Tipo de propriedade não suportado: ${type} (${key})`);
 }
 
 function scriptClass(fileName) {
@@ -51,7 +61,7 @@ function fromNode(name, node) {
     const built = fromPath(name, path.join(ROOT, node.$path));
     return children.length ? built.replace(/<\/Item>$/, `${children.join('')}</Item>`) : built;
   }
-  return item(node.$className, name, children);
+  return item(node.$className, name, children, null, node.$properties);
 }
 
 const services = Object.entries(project.tree)

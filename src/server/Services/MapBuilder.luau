@@ -110,7 +110,9 @@ local function setupLighting()
 	Lighting.Brightness = 3
 	Lighting.Ambient = Color3.fromRGB(95, 95, 105)
 	Lighting.OutdoorAmbient = Color3.fromRGB(175, 175, 185)
-	Lighting.ShadowSoftness = 0.6
+	-- Sombra marcada do sol: é ela que dá volume aos blocos.
+	Lighting.ShadowSoftness = 0.15
+	Lighting.GlobalShadows = true
 	Lighting.EnvironmentDiffuseScale = 0.4
 	Lighting.EnvironmentSpecularScale = 0.3
 	if not Lighting:FindFirstChildOfClass("Atmosphere") then
@@ -198,35 +200,74 @@ local function barn(parent: Instance, cframe: CFrame, color: Color3, width: numb
 		Color3.fromRGB(70, 40, 30),
 		Enum.Material.WoodPlanks
 	)
+	-- Acabamento branco: quinas, faixa no alto e moldura da porta.
+	local trim = Color3.fromRGB(250, 246, 238)
+	for _, x in { -1, 1 } do
+		for _, z in { -1, 1 } do
+			block(
+				parent,
+				Vector3.new(1, height, 1),
+				cframe * CFrame.new(x * (width / 2), height / 2, z * (depth / 2)),
+				trim,
+				Enum.Material.WoodPlanks
+			)
+		end
+	end
+	block(
+		parent,
+		Vector3.new(width + 0.6, 0.8, depth + 0.6),
+		cframe * CFrame.new(0, height - 0.4, 0),
+		trim,
+		Enum.Material.WoodPlanks
+	)
+	local doorWidth, doorHeight = width * 0.35, height * 0.65
+	for _, x in { -1, 1 } do
+		block(
+			parent,
+			Vector3.new(0.7, doorHeight + 0.7, 0.4),
+			cframe * CFrame.new(x * (doorWidth / 2 + 0.35), (doorHeight + 0.7) / 2, -depth / 2 - 0.2),
+			trim,
+			Enum.Material.WoodPlanks
+		)
+	end
+	block(
+		parent,
+		Vector3.new(doorWidth + 1.4, 0.7, 0.4),
+		cframe * CFrame.new(0, doorHeight + 0.35, -depth / 2 - 0.2),
+		trim,
+		Enum.Material.WoodPlanks
+	)
 end
 
+-- Árvore de blocos: tronco quadrado e copa de cubos empilhados em dois tons.
 local function tree(parent: Instance, position: Vector3, foliage: Color3, rng: Random)
-	local height = rng:NextNumber(6, 11)
-	block(
-		parent,
-		Vector3.new(height, 1.6, 1.6),
-		CFrame.new(position + Vector3.new(0, height / 2, 0)) * CFrame.Angles(0, 0, rad(90)),
-		Color3.fromRGB(110, 75, 45),
-		Enum.Material.Wood,
-		Enum.PartType.Cylinder
-	)
-	local radius = rng:NextNumber(7, 11)
-	block(
-		parent,
-		Vector3.one * radius,
-		CFrame.new(position + Vector3.new(0, height + radius * 0.3, 0)),
-		foliage,
-		Enum.Material.Grass,
-		Enum.PartType.Ball
-	)
-	block(
-		parent,
-		Vector3.one * radius * 0.7,
-		CFrame.new(position + Vector3.new(radius * 0.3, height + radius * 0.65, radius * 0.1)),
-		foliage:Lerp(Color3.new(1, 1, 1), 0.08),
-		Enum.Material.Grass,
-		Enum.PartType.Ball
-	)
+	local base = CFrame.new(position) * CFrame.Angles(0, rad(rng:NextInteger(0, 3) * 90 + rng:NextNumber(-12, 12)), 0)
+	local height = math.floor(rng:NextNumber(6, 10))
+	local trunk = Style.shade(Color3.fromRGB(150, 85, 40), rng:NextNumber(-0.1, 0.05))
+	local dark = Style.shade(foliage, -0.18)
+	local light = Style.shade(foliage, 0.12)
+	block(parent, Vector3.new(2, height, 2), base * CFrame.new(0, height / 2, 0), trunk, Enum.Material.Wood)
+
+	local width = math.floor(rng:NextNumber(8, 11))
+	local top = height + 2
+	block(parent, Vector3.new(width, 4, width), base * CFrame.new(0, top, 0), dark, Enum.Material.Grass)
+	block(parent, Vector3.new(width - 3, 3, width - 3), base * CFrame.new(0.5, top + 3.5, -0.5), foliage, Enum.Material.Grass)
+	block(parent, Vector3.new(width - 6, 2, width - 6), base * CFrame.new(0, top + 6, 0), light, Enum.Material.Grass)
+	-- Tufos laterais deixam a silhueta menos "caixa".
+	for _ = 1, 2 do
+		local side = rng:NextInteger(0, 3) * 90
+		local tuft = CFrame.Angles(0, rad(side), 0) * CFrame.new(width / 2, rng:NextNumber(-0.5, 1.5), 0)
+		block(parent, Vector3.new(3, 3, 4), base * CFrame.new(0, top, 0) * tuft, foliage, Enum.Material.Grass)
+	end
+end
+
+-- Arbusto em degraus, como os dos simuladores.
+local function bush(parent: Instance, position: Vector3, foliage: Color3, rng: Random)
+	local base = CFrame.new(position) * CFrame.Angles(0, rad(rng:NextNumber(0, 90)), 0)
+	local size = rng:NextNumber(4, 6)
+	block(parent, Vector3.new(size, 1.6, size), base * CFrame.new(0, 0.8, 0), Style.shade(foliage, -0.15), Enum.Material.Grass)
+	block(parent, Vector3.new(size - 1.6, 1.4, size - 1.6), base * CFrame.new(0, 2.3, 0), foliage, Enum.Material.Grass)
+	block(parent, Vector3.new(size - 3, 1, size - 3), base * CFrame.new(0, 3.5, 0), Style.shade(foliage, 0.12), Enum.Material.Grass)
 end
 
 local function rock(parent: Instance, position: Vector3, rng: Random)
@@ -352,6 +393,20 @@ local function buildHub(world: Instance): SpawnLocation
 				Enum.Material.Ground
 			)
 		)
+	end
+
+	-- Árvores entre os lotes e na borda da ilha, arbustos perto dos caminhos.
+	local rng = Random.new(2024)
+	local hubFoliage = Color3.fromRGB(70, 185, 60)
+	for i = 1, PLOT_COUNT do
+		local between = i * (2 * math.pi / PLOT_COUNT)
+		tree(hub, (CFrame.Angles(0, between, 0) * CFrame.new(0, 0, PLOT_RADIUS)).Position, hubFoliage, rng)
+		tree(hub, (CFrame.Angles(0, between + rad(8), 0) * CFrame.new(0, 0, 205)).Position, hubFoliage, rng)
+		tree(hub, (CFrame.Angles(0, between - rad(9), 0) * CFrame.new(0, 0, 200)).Position, hubFoliage, rng)
+		local path = (i - 0.5) * (2 * math.pi / PLOT_COUNT)
+		for _, side in { -1, 1 } do
+			bush(hub, (CFrame.Angles(0, path, 0) * CFrame.new(side * 9, 0, 80)).Position, hubFoliage, rng)
+		end
 	end
 
 	local spawn = Instance.new("SpawnLocation")
@@ -555,6 +610,9 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 	scenery.Parent = model
 	for _ = 1, math.floor(size / 6) do
 		tree(scenery, randomPoint(8), route.foliage, rng)
+	end
+	for _ = 1, math.floor(size / 8) do
+		bush(scenery, randomPoint(6), route.foliage, rng)
 	end
 	for _ = 1, 18 do
 		rock(scenery, randomPoint(6), rng)
