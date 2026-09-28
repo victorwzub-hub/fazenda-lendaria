@@ -8,6 +8,7 @@ local Format = require(Shared.Format)
 local Rarities = require(Shared.Config.Rarities)
 local Species = require(Shared.Config.Species)
 
+local Basket = require(script.Parent.Basket)
 local DataService = require(script.Parent.DataService)
 local Notify = require(script.Parent.Notify)
 local PassService = require(script.Parent.PassService)
@@ -137,6 +138,8 @@ end
 function FarmService.teleportHome(player: Player): (boolean, string?)
 	local plot = plotOf[player]
 	Teleport.to(player, if plot then plot.spawn else HUB_SPAWN)
+	-- Chegou em casa: o que estava na cesta fica guardado de vez.
+	Basket.deposit(player)
 	return true, nil
 end
 

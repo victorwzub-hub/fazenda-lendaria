@@ -2,8 +2,10 @@ local Players = game:GetService("Players")
 
 local Services = script.Services
 local ActionService = require(Services.ActionService)
+local Basket = require(Services.Basket)
 local DataService = require(Services.DataService)
 local FarmService = require(Services.FarmService)
+local GuardianService = require(Services.GuardianService)
 local MapBuilder = require(Services.MapBuilder)
 local Notify = require(Services.Notify)
 local PassService = require(Services.PassService)
@@ -14,6 +16,7 @@ DataService.init()
 PassService.init()
 FarmService.init(map.plots)
 RouteService.init(map.zones, map.portals)
+GuardianService.init(map.zones)
 ActionService.init()
 
 PassService.onGranted(function(player)
@@ -35,6 +38,7 @@ local function onPlayerAdded(player: Player)
 	end
 	FarmService.applyOfflineEarnings(player)
 	FarmService.assignPlot(player)
+	Basket.setup(player)
 	if isNew then
 		FarmService.giveStarter(player)
 	end
@@ -68,5 +72,6 @@ end
 
 Players.PlayerRemoving:Connect(function(player)
 	FarmService.releasePlot(player)
+	Basket.release(player)
 	DataService.release(player)
 end)

@@ -11,8 +11,10 @@ local Routes = require(Shared.Config.Routes)
 local Species = require(Shared.Config.Species)
 local Style = require(Shared.Style)
 
+local Basket = require(script.Parent.Basket)
 local DataService = require(script.Parent.DataService)
 local FarmService = require(script.Parent.FarmService)
+local GuardianService = require(script.Parent.GuardianService)
 local Notify = require(script.Parent.Notify)
 local PassService = require(script.Parent.PassService)
 local Teleport = require(script.Parent.Teleport)
@@ -24,6 +26,7 @@ local GOLDEN_DURATION = 2 * 60
 local GOLDEN_RARE_BOOST = 3
 local RESPAWN_MIN, RESPAWN_MAX = 6, 14
 local TOUCH_COOLDOWN = 2
+local NEST_HOLD = 1.5
 local SPARKLES = "rbxasset://textures/particles/sparkles_main.dds"
 local GOLD = Color3.fromRGB(255, 205, 60)
 
@@ -256,9 +259,9 @@ local function collect(player: Player, route, def): boolean
 	if doubled then
 		amount *= 2
 	end
-	DataService.addMaterial(player, def.material, amount)
+	-- Vai para a cesta: só vira material de verdade quando o jogador volta para a fazenda.
+	amount = Basket.add(player, def.material, amount)
 	profile.stats.collected += 1
-	DataService.push(player)
 	if material.tier >= 4 then
 		Notify.big(
 			player,
@@ -286,10 +289,16 @@ local function spawnNode(routeId: string)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = if def.nest then "Abrir ninho" else "Coletar"
 	prompt.ObjectText = model.Name
-	prompt.HoldDuration = if def.nest then 1 elseif Materials.byId[def.material].tier >= 3 then 0.6 else 0.3
+	-- Ninho demora para abrir: é a janela em que o guardião chega correndo.
+	prompt.HoldDuration = if def.nest then NEST_HOLD elseif Materials.byId[def.material].tier >= 3 then 0.6 else 0.3
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = root
+
+	local alertChance = if def.nest then 1 elseif Materials.byId[def.material].tier >= 3 then 0.5 else 0.15
+	prompt.PromptButtonHoldBegan:Connect(function(player)
+		GuardianService.alert(player, root.Position, alertChance)
+	end)
 
 	local taken = false
 	prompt.Triggered:Connect(function(player)
@@ -298,6 +307,10 @@ local function spawnNode(routeId: string)
 		end
 		local profile = DataService.get(player)
 		if not profile or not profile.routes[routeId] then
+			return
+		end
+		if not def.nest and Basket.space(player) <= 0 then
+			Notify.toast(player, "🧺 Cesta cheia! Volte para a fazenda para guardar", Color3.fromRGB(255, 120, 100))
 			return
 		end
 		taken = true

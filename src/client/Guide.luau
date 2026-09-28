@@ -1,5 +1,6 @@
 -- Diz ao jogador o que fazer agora, em poucas palavras, e mostra o caminho:
 -- trilha de bolinhas no chão + seta pulando em cima do objetivo, ou seta num botão do menu.
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -75,6 +76,28 @@ local function portalPosition(routeId: string): Vector3?
 	return if field then (field :: BasePart).Position else nil
 end
 
+local function returnPortalPosition(routeId: string): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	local portal = zone and zone:FindFirstChild("Retorno")
+	local field = portal and portal:FindFirstChild("Campo")
+	return if field then (field :: BasePart).Position else nil
+end
+
+-- Materiais guardados + o que está na cesta: "se eu levar isso para casa, dá para evoluir?".
+local function withBasket(profile)
+	local ok, basket = pcall(HttpService.JSONDecode, HttpService, player:GetAttribute("CestaItens") or "{}")
+	if not ok or type(basket) ~= "table" or next(basket) == nil then
+		return profile
+	end
+	local merged = table.clone(profile.materials)
+	for materialId, amount in basket do
+		merged[materialId] = (merged[materialId] or 0) + amount
+	end
+	return setmetatable({ materials = merged }, { __index = profile })
+end
+
 local function canEvolveSomething(profile, coins: number): boolean
 	for _, animal in profile.animals do
 		if animal.rarity < Rarities.MAX then
@@ -119,7 +142,16 @@ function Guide.update()
 	local text: string
 	local button: string? = nil
 	local place: Vector3? = nil
-	if canEvolveSomething(profile, coins) then
+	local chaser = player:GetAttribute("Perseguido")
+	local basket = player:GetAttribute("Cesta") or 0
+	local basketFull = basket >= (player:GetAttribute("CestaMax") or math.huge)
+	if chaser then
+		text = "🏃 Fuja do " .. chaser .. "!"
+	elseif zone and basketFull then
+		text, place = "🧺 Cesta cheia! Volte para casa!", returnPortalPosition(zone)
+	elseif zone and basket > 0 and not canEvolveSomething(profile, coins) and canEvolveSomething(withBasket(profile), coins) then
+		text, place = "🧺 Leve a cesta para casa!", returnPortalPosition(zone)
+	elseif canEvolveSomething(profile, coins) then
 		text, button = "⬆️ Evolua seu animal!", "Animais"
 	elseif canUnlockNextRoute(profile, coins) then
 		text, button = "🗺️ Libere uma rota nova!", "Rotas"

@@ -5,6 +5,7 @@ local DEFINITIONS = {
 	Request = "RemoteFunction",
 	Notify = "RemoteEvent",
 	Profile = "RemoteEvent",
+	Effect = "RemoteEvent",
 }
 
 local folder: Folder

@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -22,6 +23,8 @@ local coinsLabel: TextLabel
 local coinsScale: UIScale
 local rateLabel: TextLabel
 local luckLabel: TextLabel
+local basketLabel: TextLabel
+local basketScale: UIScale
 local goldenFrame: Frame
 local goldenLabel: TextLabel
 local objectiveLabel: TextLabel
@@ -192,17 +195,26 @@ function Hud.mount(gui: ScreenGui, scales: { UIScale }, menu: { MenuEntry })
 		TextSize = 26,
 		TextColor3 = MONEY,
 		Position = UDim2.fromOffset(8, 0),
-		Size = UDim2.fromOffset(200, 32),
+		Size = UDim2.fromOffset(130, 32),
 		Parent = money,
 	}, 2.5)
 	luckLabel = bigText({
 		Text = "🍀 x1.00",
 		TextSize = 26,
 		TextColor3 = Kit.colors.white,
-		Position = UDim2.fromOffset(210, 0),
-		Size = UDim2.fromOffset(200, 32),
+		Position = UDim2.fromOffset(140, 0),
+		Size = UDim2.fromOffset(130, 32),
 		Parent = money,
 	}, 2.5)
+	basketLabel = bigText({
+		Text = "🧺 0/20",
+		TextSize = 26,
+		TextColor3 = Kit.colors.white,
+		Position = UDim2.fromOffset(272, 0),
+		Size = UDim2.fromOffset(150, 32),
+		Parent = money,
+	}, 2.5)
+	basketScale = Kit.new("UIScale", { Parent = basketLabel })
 	Kit.label({
 		Text = "💰",
 		TextSize = 56,
@@ -262,7 +274,20 @@ function Hud.point(id: string?)
 	pointed = id
 end
 
+-- Cesta: branca normal, vermelha e pulsando quando está cheia.
+function Hud.setBasket(count: number, max: number)
+	local text = "🧺 " .. count .. "/" .. max
+	if basketLabel.Text ~= text then
+		basketLabel.Text = text
+		basketScale.Scale = 1.2
+		TweenService:Create(basketScale, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+	end
+	basketLabel.TextColor3 = if count >= max then Kit.colors.red else Kit.colors.white
+end
+
 function Hud.tick()
+	local player = Players.LocalPlayer
+	Hud.setBasket(player:GetAttribute("Cesta") or 0, player:GetAttribute("CestaMax") or 20)
 	if State.profile then
 		rateLabel.Text = "+" .. Format.rate(State.production()) .. "/s"
 		luckLabel.Text = string.format("🍀 x%.2f", State.luck())
