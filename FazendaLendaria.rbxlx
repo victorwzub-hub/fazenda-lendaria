@@ -836,8 +836,9 @@ local folder: Folder
 if RunService:IsServer() then
 	folder = ReplicatedStorage:FindFirstChild("Remotes") :: Folder
 	if not folder then
-		folder = Instance.new("Folder")
-		folder.Name = "Remotes"
+		local created = Instance.new("Folder")
+		created.Name = "Remotes"
+		folder = created
 	end
 	for name, className in DEFINITIONS do
 		if not folder:FindFirstChild(name) then
@@ -3340,7 +3341,7 @@ local toastCount = 0
 local bigLabel: TextLabel
 local bigSub: TextLabel
 local bigToken = 0
-local revealFrame: Frame
+local revealFrame: TextButton
 local revealTitle: TextLabel
 local revealName: TextLabel
 local revealSub: TextLabel

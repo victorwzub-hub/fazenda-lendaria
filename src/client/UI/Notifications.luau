@@ -14,7 +14,7 @@ local toastCount = 0
 local bigLabel: TextLabel
 local bigSub: TextLabel
 local bigToken = 0
-local revealFrame: Frame
+local revealFrame: TextButton
 local revealTitle: TextLabel
 local revealName: TextLabel
 local revealSub: TextLabel

@@ -11,8 +11,9 @@ local folder: Folder
 if RunService:IsServer() then
 	folder = ReplicatedStorage:FindFirstChild("Remotes") :: Folder
 	if not folder then
-		folder = Instance.new("Folder")
-		folder.Name = "Remotes"
+		local created = Instance.new("Folder")
+		created.Name = "Remotes"
+		folder = created
 	end
 	for name, className in DEFINITIONS do
 		if not folder:FindFirstChild(name) then
