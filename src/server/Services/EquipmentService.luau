@@ -64,6 +64,28 @@ local function boots(folder: Instance, character: Model, level: number)
 	end
 end
 
+-- Molinhas das Botas de Pulo embaixo de cada pé.
+local function springs(folder: Instance, character: Model, level: number)
+	local color = if level >= 3 then Color3.fromRGB(255, 200, 50) else Color3.fromRGB(80, 230, 120)
+	for _, pair in { { "LeftFoot", "Left Leg" }, { "RightFoot", "Right Leg" } } do
+		local foot = findPart(character, pair[1], pair[2])
+		if foot then
+			local bottom = -foot.Size.Y / 2
+			for i = 0, 2 do
+				local ring = attach(
+					folder,
+					foot,
+					Vector3.new(0.18, 0.7, 0.7),
+					CFrame.new(0, bottom - 0.15 - i * 0.22, 0) * CFrame.Angles(0, 0, math.rad(90)),
+					color
+				)
+				ring.Shape = Enum.PartType.Cylinder
+				ring.Material = Enum.Material.Metal
+			end
+		end
+	end
+end
+
 local function net(folder: Instance, character: Model, level: number)
 	local hand = findPart(character, "RightHand", "Right Arm")
 	if not hand then
@@ -122,6 +144,9 @@ function EquipmentService.refresh(player: Player)
 	local upgrades = profile.upgrades
 	if (upgrades.Velocidade or 0) > 0 then
 		boots(folder, character, upgrades.Velocidade)
+	end
+	if (upgrades.Pulo or 0) > 0 then
+		springs(folder, character, upgrades.Pulo)
 	end
 	if (upgrades.Rede or 0) > 0 then
 		net(folder, character, upgrades.Rede)

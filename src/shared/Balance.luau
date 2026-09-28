@@ -77,6 +77,16 @@ function Balance.walkSpeed(profile): number
 	return 16 + 2 * (profile.upgrades.Velocidade or 0)
 end
 
+-- Pulos no ar além do normal (nv 1 = duplo, nv 2 = triplo).
+function Balance.extraJumps(profile): number
+	return math.min(profile.upgrades.Pulo or 0, 2)
+end
+
+-- Altura do pulo: padrão do Roblox (7.2) e +0.8 por nível acima do 2.
+function Balance.jumpHeight(profile): number
+	return 7.2 + 0.8 * math.max(0, (profile.upgrades.Pulo or 0) - 2)
+end
+
 function Balance.basketCapacity(profile): number
 	return Balance.BASKET_BASE + Balance.BASKET_PER_LEVEL * (profile.upgrades.Cesta or 0)
 end

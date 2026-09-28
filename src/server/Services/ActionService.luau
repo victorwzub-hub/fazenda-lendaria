@@ -33,7 +33,7 @@ local function buyUpgrade(player: Player, upgradeId: string): (boolean, string?)
 		return false, "Moedas insuficientes"
 	end
 	profile.upgrades[upgradeId] = level + 1
-	if upgradeId == "Velocidade" then
+	if upgradeId == "Velocidade" or upgradeId == "Pulo" then
 		FarmService.applySpeed(player)
 	elseif upgradeId == "Cesta" then
 		Basket.refresh(player)

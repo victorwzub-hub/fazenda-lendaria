@@ -46,12 +46,21 @@ Upgrades.byId = {
 		baseCost = 120,
 		growth = 1.75,
 	},
+	Pulo = {
+		id = "Pulo",
+		name = "Botas de Pulo",
+		emoji = "🦘",
+		desc = "Nv 1: pulo duplo • Nv 2: pulo triplo • depois: pulo mais alto",
+		max = 5,
+		baseCost = 300,
+		growth = 2.2,
+	},
 }
 
 -- Equipamentos aparecem no boneco; melhorias da fazenda não.
-Upgrades.equipment = { "Velocidade", "Rede", "Cesta" }
+Upgrades.equipment = { "Velocidade", "Pulo", "Rede", "Cesta" }
 Upgrades.farm = { "Sorte", "Fazenda" }
-Upgrades.order = { "Sorte", "Fazenda", "Velocidade", "Rede", "Cesta" }
+Upgrades.order = { "Sorte", "Fazenda", "Velocidade", "Pulo", "Rede", "Cesta" }
 
 function Upgrades.cost(id: string, level: number): number
 	local def = Upgrades.byId[id]

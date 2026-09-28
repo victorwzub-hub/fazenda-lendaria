@@ -150,6 +150,8 @@ function FarmService.applySpeed(player: Player)
 	if profile and humanoid then
 		local boosted = (player:GetAttribute("BoostVelocidade") or 0) > Workspace:GetServerTimeNow()
 		humanoid.WalkSpeed = Balance.walkSpeed(profile) + (if boosted then Balance.BOOST_SPEED else 0)
+		humanoid.UseJumpPower = false
+		humanoid.JumpHeight = Balance.jumpHeight(profile)
 	end
 end
 

@@ -262,7 +262,9 @@ local function step(guardian: Guardian, dt: number, now: number)
 		else
 			goal = target.Position
 			speed = guardian.def.speed * (if now < guardian.chargeEnds then CHARGE_MULT else 1)
-			if (flat(target.Position) - flat(position)).Magnitude <= CATCH_DISTANCE then
+			-- Quem está em cima de uma plataforma não é pego por baixo.
+			local below = math.abs(target.Position.Y - position.Y) < 7
+			if below and (flat(target.Position) - flat(position)).Magnitude <= CATCH_DISTANCE then
 				catch(guardian, player)
 				goal = nil
 			end

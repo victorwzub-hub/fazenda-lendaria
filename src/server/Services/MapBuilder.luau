@@ -37,6 +37,7 @@ export type Zone = {
 	spawn: CFrame,
 	nodes: Folder,
 	returnField: BasePart,
+	treasure: BasePart,
 	safeCenter: Vector3,
 	safeRadius: number,
 }
@@ -600,6 +601,78 @@ local ROUTE_DECOR: { [string]: (Instance, any, Random, (number) -> Vector3) -> (
 	end,
 }
 
+-- Árvore do Tesouro: tronco gigante com plataformas em espiral e um baú na copa.
+-- As 6 primeiras sobem 4 studs (pulo normal = 7,2); as 3 últimas sobem 9 (precisa de pulo duplo).
+local TREASURE_HEIGHTS = { 3, 7, 11, 15, 19, 23, 32, 41, 50 }
+-- Copa estreita (meia largura 6) deixa 3 studs livres até a última plataforma (borda em 9),
+-- senão a cabeça bate na copa no último pulo.
+local CANOPY_TOP = 55
+
+local function treasureTree(parent: Instance, center: Vector3, route): BasePart
+	local model = Instance.new("Model")
+	model.Name = "ArvoreDoTesouro"
+	model.Parent = parent
+	local bark = Color3.fromRGB(135, 80, 40)
+	block(model, Vector3.new(5, CANOPY_TOP - 3, 5), CFrame.new(center + Vector3.new(0, (CANOPY_TOP - 3) / 2, 0)), bark, Enum.Material.Wood)
+	for i = 0, 3 do
+		local side = CFrame.Angles(0, i * math.pi / 2, 0)
+		block(model, Vector3.new(3, 3, 5), CFrame.new(center) * side * CFrame.new(0, 1.5, 4.5), Style.shade(bark, -0.1), Enum.Material.Wood)
+	end
+	local leaves = route.foliage
+	block(model, Vector3.new(12, 3, 12), CFrame.new(center + Vector3.new(0, CANOPY_TOP - 1.5, 0)), leaves, Enum.Material.Grass)
+	for i = 0, 3 do
+		local side = CFrame.Angles(0, i * math.pi / 2 + rad(45), 0)
+		decor(block(model, Vector3.new(3, 2, 3), CFrame.new(center) * side * CFrame.new(0, CANOPY_TOP + 1, 5), Style.shade(leaves, 0.12), Enum.Material.Grass))
+	end
+
+	for i, height in TREASURE_HEIGHTS do
+		local angle = rad(i * 52)
+		local at = center + Vector3.new(math.cos(angle) * 12, height - 0.5, math.sin(angle) * 12)
+		local color = if i > 6 then route.theme else Style.shade(route.theme, 0.35)
+		block(model, Vector3.new(6, 1, 6), CFrame.new(at) * CFrame.Angles(0, -angle, 0), color, Enum.Material.WoodPlanks)
+	end
+
+	-- Baú dourado na copa.
+	local gold = Color3.fromRGB(255, 200, 50)
+	local chestAt = CFrame.new(center + Vector3.new(0, CANOPY_TOP + 1.25, 0))
+	local chest = block(model, Vector3.new(4, 2.5, 3), chestAt, Color3.fromRGB(150, 85, 35), Enum.Material.WoodPlanks)
+	chest.Name = "Bau"
+	block(model, Vector3.new(4.3, 1.1, 3.3), chestAt * CFrame.new(0, 1.7, 0), Color3.fromRGB(120, 65, 25), Enum.Material.WoodPlanks)
+	for _, x in { -1.5, 1.5 } do
+		decor(block(model, Vector3.new(0.4, 3.9, 3.4), chestAt * CFrame.new(x, 0.55, 0), gold, Enum.Material.SmoothPlastic))
+	end
+	decor(block(model, Vector3.new(0.8, 0.9, 0.3), chestAt * CFrame.new(0, 0.9, -1.65), gold, Enum.Material.SmoothPlastic))
+	local light = Instance.new("PointLight")
+	light.Color = gold
+	light.Range = 16
+	light.Brightness = 2
+	light.Parent = chest
+	local sparkles = Instance.new("ParticleEmitter")
+	sparkles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	sparkles.Color = ColorSequence.new(gold)
+	sparkles.LightEmission = 1
+	sparkles.Rate = 10
+	sparkles.Lifetime = NumberRange.new(1, 1.6)
+	sparkles.Speed = NumberRange.new(1, 3)
+	sparkles.SpreadAngle = Vector2.new(180, 180)
+	sparkles.Size = NumberSequence.new(0.5, 0)
+	sparkles.Parent = chest
+
+	local topSign = billboard(chest, UDim2.fromScale(22, 4), Vector3.new(0, 7, 0), 420)
+	textLabel(topSign, "Titulo", "💎 BAÚ DO TESOURO", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), gold)
+	local base = decor(block(model, Vector3.one, CFrame.new(center + Vector3.new(0, 9, 0)), bark))
+	base.Transparency = 1
+	textLabel(
+		billboard(base, UDim2.fromScale(20, 3), Vector3.zero, 140),
+		"Aviso",
+		"🌳 Suba até o topo! Precisa de 🦘 Pulo Duplo",
+		UDim2.fromScale(1, 1),
+		UDim2.fromScale(0, 0),
+		Color3.new(1, 1, 1)
+	)
+	return chest
+end
+
 local function buildZone(parent: Instance, routeId: string, index: number): Zone
 	local route = Routes.byId[routeId]
 	local origin: Vector3 = route.origin
@@ -686,6 +759,8 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 		Color3.fromRGB(150, 230, 255)
 	)
 
+	local treasure = treasureTree(model, origin + Vector3.new(half - 34, 0, -half + 34), route)
+
 	-- Trilha de pedras saindo da zona segura para o meio da rota.
 	local pathRng = Random.new(index * 31)
 	local toCenter = (origin - safeCenter).Unit
@@ -737,6 +812,7 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 		spawn = spawn,
 		nodes = nodes,
 		returnField = returnField,
+		treasure = treasure,
 		safeCenter = safeCenter,
 		safeRadius = SAFE_RADIUS,
 	}

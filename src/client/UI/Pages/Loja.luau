@@ -22,6 +22,10 @@ local EFFECTS: { [string]: (any) -> string } = {
 	Velocidade = function(profile)
 		return "Velocidade: " .. Balance.walkSpeed(profile)
 	end,
+	Pulo = function(profile)
+		local jumps = 1 + Balance.extraJumps(profile)
+		return "Pulos seguidos: " .. jumps .. " • altura " .. string.format("%.1f", Balance.jumpHeight(profile))
+	end,
 	Rede = function(profile)
 		return string.format("Itens a mais: +%.2f por coleta", Balance.NET_CHANCE_PER_LEVEL * (profile.upgrades.Rede or 0))
 	end,
