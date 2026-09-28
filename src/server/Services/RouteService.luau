@@ -275,7 +275,8 @@ local function collect(player: Player, route, def): boolean
 		Notify.toast(
 			player,
 			"+" .. amount .. " " .. material.emoji .. " " .. material.name .. (if doubled then "   🍀 x2!" else ""),
-			material.color
+			material.color,
+			"coleta"
 		)
 	end
 	return true

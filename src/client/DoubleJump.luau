@@ -6,6 +6,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local Balance = require(ReplicatedStorage:WaitForChild("Shared").Balance)
 
+local Sfx = require(script.Parent.Sfx)
 local State = require(script.Parent.State)
 
 local DoubleJump = {}
@@ -83,6 +84,7 @@ function DoubleJump.start()
 		root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, rise, root.AssemblyLinearVelocity.Z)
 		humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 		puff(root)
+		Sfx.play("pulo")
 	end)
 end
 

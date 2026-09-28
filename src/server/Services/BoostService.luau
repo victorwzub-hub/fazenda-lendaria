@@ -56,7 +56,7 @@ local function apply(player: Player, def: BoostDef)
 	end
 	local ends = Workspace:GetServerTimeNow() + def.seconds
 	player:SetAttribute("Boost" .. def.id, ends)
-	Notify.toast(player, def.emoji .. " " .. def.name .. " por " .. def.seconds .. " segundos!", def.color)
+	Notify.toast(player, def.emoji .. " " .. def.name .. " por " .. def.seconds .. " segundos!", def.color, "boost")
 
 	if def.id == "Velocidade" then
 		FarmService.applySpeed(player)

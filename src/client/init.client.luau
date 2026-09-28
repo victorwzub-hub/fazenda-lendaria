@@ -9,6 +9,8 @@ local World = require(script.World)
 local Guide = require(script.Guide)
 local Effects = require(script.Effects)
 local DoubleJump = require(script.DoubleJump)
+local Sfx = require(script.Sfx)
+local Welcome = require(script.UI.Welcome)
 local Hud = require(script.UI.Hud)
 local Kit = require(script.UI.Kit)
 local Notifications = require(script.UI.Notifications)
@@ -46,6 +48,9 @@ end
 
 local function act(action: string, arg: string?): (boolean, any)
 	local ok, result = State.request(action, arg)
+	if ok and (action == "BuyUpgrade" or action == "UnlockRoute" or action == "Sell") then
+		Sfx.play("comprar")
+	end
 	if type(result) == "string" then
 		Notifications.toast(result, if ok then Kit.colors.green else Kit.colors.red)
 	end
@@ -149,7 +154,10 @@ camera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
 rescale()
 
 Remotes.event("Notify").OnClientEvent:Connect(function(payload)
-	if payload.kind == "toast" then
+	Sfx.play(payload.sfx or (if payload.kind == "reveal" then "revelar" else nil))
+	if payload.kind == "welcome" then
+		Welcome.show(gui, scales, payload.amount, payload.seconds)
+	elseif payload.kind == "toast" then
 		Notifications.toast(payload.text, payload.color)
 	elseif payload.kind == "big" then
 		Notifications.big(payload.text, payload.sub, payload.color)
@@ -175,6 +183,15 @@ World.start()
 Guide.start()
 Effects.start()
 DoubleJump.start()
+Sfx.start()
+
+-- Galo cantando quando o Galo Bravo começa a correr atrás de você.
+player:GetAttributeChangedSignal("Perseguido"):Connect(function()
+	local chaser = player:GetAttribute("Perseguido")
+	if chaser and string.find(chaser, "Galo", 1, true) then
+		Sfx.play("galo")
+	end
+end)
 
 while true do
 	Hud.tick()

@@ -7,6 +7,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Remotes)
 local Style = require(Shared.Style)
 
+local Sfx = require(script.Parent.Sfx)
+
 local Effects = {}
 
 local KNOCK_SPEED = 55
@@ -49,6 +51,7 @@ local function knock(from: Vector3)
 	local away = Vector3.new(root.Position.X - from.X, 0, root.Position.Z - from.Z)
 	away = if away.Magnitude > 0.1 then away.Unit else -root.CFrame.LookVector
 
+	Sfx.play("empurrao")
 	humanoid.PlatformStand = true
 	root.AssemblyLinearVelocity = away * KNOCK_SPEED + Vector3.new(0, KNOCK_LIFT, 0)
 	local head = character:FindFirstChild("Head")

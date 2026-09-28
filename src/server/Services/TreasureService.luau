@@ -63,7 +63,7 @@ local function open(player: Player, routeId: string, index: number)
 	DataService.addCoins(player, coins)
 	DataService.push(player)
 	table.insert(parts, "+💰 " .. Format.number(coins))
-	Notify.big(player, "🎁 BAÚ DO TESOURO!", table.concat(parts, "   ") .. "   • leve a cesta para casa!", GOLD)
+	Notify.big(player, "🎁 BAÚ DO TESOURO!", table.concat(parts, "   ") .. "   • leve a cesta para casa!", GOLD, "revelar")
 end
 
 function TreasureService.init(zones)

@@ -342,12 +342,7 @@ function FarmService.applyOfflineEarnings(player: Player)
 	local amount = Balance.offlineEarnings(profile, os.time() - profile.lastOnline, PassService.has(player, "VIP"))
 	if amount > 0 then
 		DataService.addCoins(player, amount)
-		Notify.big(
-			player,
-			"Bem-vindo de volta! 🌾",
-			"Sua fazenda rendeu 💰 " .. Format.number(amount) .. " enquanto você estava fora",
-			GOLD
-		)
+		Notify.welcome(player, amount, os.time() - profile.lastOnline)
 	end
 end
 
