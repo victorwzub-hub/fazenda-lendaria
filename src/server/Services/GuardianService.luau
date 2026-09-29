@@ -71,6 +71,7 @@ type Guardian = {
 	knockedOut: boolean,
 	action: string?,
 	actionEnds: number,
+	lastPose: number,
 }
 
 local guardians: { Guardian } = {}
@@ -476,10 +477,7 @@ local function step(guardian: Guardian, dt: number, now: number)
 		return
 	end
 	-- Pulinho enquanto anda: mais alto quando está correndo atrás de alguém.
-	local hop = math.abs(math.sin(now * (if guardian.state == "chase" then 14 else 8))) * (if guardian.state
-			== "chase"
-		then 0.9
-		else 0.3)
+	local hop = math.abs(math.sin(now * (if guardian.state == "chase" then 14 else 8))) * 0.3
 	local at = Vector3.new(moved.X, hop, moved.Z)
 	guardian.root.CFrame = CFrame.lookAt(at, at + direction)
 end
@@ -526,6 +524,7 @@ function GuardianService.init(zones)
 				local angle = (i / PER_ZONE) * math.pi * 2
 				local home = zone.origin + Vector3.new(math.cos(angle), 0, math.sin(angle)) * zone.size * 0.25
 				model:PivotTo(CFrame.new(home))
+				model:SetAttribute("Pose", root.CFrame)
 				model.Parent = folder
 				table.insert(guardians, {
 					def = def,
@@ -542,6 +541,7 @@ function GuardianService.init(zones)
 					knockedOut = false,
 					action = nil,
 					actionEnds = 0,
+					lastPose = 0,
 					home = home,
 					state = "idle",
 					target = nil,
@@ -569,6 +569,10 @@ function GuardianService.init(zones)
 		local now = os.clock()
 		for _, guardian in guardians do
 			step(guardian, dt, now)
+			if now - guardian.lastPose >= 0.1 then
+				guardian.model:SetAttribute("Pose", guardian.root.CFrame)
+				guardian.lastPose = now
+			end
 		end
 	end)
 

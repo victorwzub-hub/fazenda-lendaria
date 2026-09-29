@@ -1,5 +1,4 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -76,13 +75,16 @@ local function wander(model: Model, plot)
 		local distance = (flat - from).Magnitude
 		if distance > 1 then
 			local facing = CFrame.lookAt(from, flat)
-			TweenService:Create(root, TweenInfo.new(0.3), { CFrame = facing }):Play()
-			task.wait(0.3)
+			root.CFrame = facing
 			local duration = distance / WALK_SPEED
-			TweenService
-				:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), { CFrame = facing + (flat - from) })
-				:Play()
+			model:SetAttribute("PasseioDe", facing)
+			model:SetAttribute("PasseioPara", facing + (flat - from))
+			model:SetAttribute("PasseioDuracao", duration)
+			model:SetAttribute("PasseioQuando", Workspace:GetServerTimeNow())
 			task.wait(duration)
+			if model.Parent then
+				root.CFrame = facing + (flat - from)
+			end
 		end
 	end
 end
