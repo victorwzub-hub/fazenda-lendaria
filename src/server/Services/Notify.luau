@@ -20,8 +20,8 @@ function Notify.welcome(player: Player, amount: number, seconds: number)
 	NotifyRemote:FireClient(player, { kind = "welcome", amount = amount, seconds = seconds, sfx = "guardar" })
 end
 
-function Notify.bigAll(title: string, subtitle: string?, color: Color3?)
-	NotifyRemote:FireAllClients({ kind = "big", text = title, sub = subtitle, color = color })
+function Notify.bigAll(title: string, subtitle: string?, color: Color3?, sfx: string?)
+	NotifyRemote:FireAllClients({ kind = "big", text = title, sub = subtitle, color = color, sfx = sfx })
 end
 
 function Notify.reveal(player: Player, payload)

@@ -89,6 +89,14 @@ local function nearestGuardian(routeId: string, from: Vector3): Vector3?
 	return best
 end
 
+local function bossPosition(routeId: string): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	local boss = zone and zone:FindFirstChild("Chefe")
+	return if boss then (boss :: Model):GetPivot().Position else nil
+end
+
 local function portalPosition(routeId: string): Vector3?
 	local world = Workspace:FindFirstChild("Mundo")
 	local portals = world and world:FindFirstChild("Portais")
@@ -204,7 +212,13 @@ function Guide.update()
 	local missionUpgrade = player:GetAttribute("MissaoUpgrade")
 	local basket = player:GetAttribute("Cesta") or 0
 	local basketFull = basket >= (player:GetAttribute("CestaMax") or math.huge)
-	if player:GetAttribute("NaEsteira") then
+	local bossRoute = Workspace:GetAttribute("ChefeRota")
+	local bossName = Workspace:GetAttribute("ChefeNome") or "Chefão"
+	if bossRoute and zone == bossRoute and not chaser then
+		text, place = "⚔️ Bata no " .. bossName .. " com 👊 (F)!", bossPosition(bossRoute)
+	elseif bossRoute and not zone and profile.routes[bossRoute] then
+		text, place = "⚔️ Chefão! Entre no portal e ajude!", portalPosition(bossRoute)
+	elseif player:GetAttribute("NaEsteira") then
 		local points = player:GetAttribute("Treino") or 0
 		if points >= (player:GetAttribute("TreinoMax") or math.huge) then
 			text = "🏃 Treino completo! Velocidade máxima"

@@ -736,6 +736,7 @@ Missions.list = {
 	{ text = "👊 Derrube o Galo Bravo (3 golpes)", kind = "stat", stat = "ko_Galinheiro", goal = 1, reward = 150, hint = "rota" },
 	{ text = "Colete 40 itens", kind = "stat", stat = "collected", goal = 40, reward = 150, hint = "rota" },
 	{ text = "Tenha uma 🐔 Galinha Rara", kind = "animal", id = "Galinha", goal = 3, reward = 200, hint = "animais" },
+	{ text = "⚔️ Ajude a derrotar um Chefão", kind = "stat", stat = "bosses", goal = 1, reward = 400, hint = "chefe" },
 	{ text = "Treine até ⚡28 para fugir do Porco", kind = "speed", goal = 28, reward = 250, hint = "esteira" },
 	{ text = "Libere a Rota do Chiqueiro", kind = "route", id = "Chiqueiro", goal = 1, reward = 300, hint = "rotas" },
 	{ text = "👊 Derrube o Porco Bravo e pegue o 🥓 Bacon", kind = "stat", stat = "ko_Chiqueiro", goal = 1, reward = 350, hint = "rota" },
@@ -1199,11 +1200,12 @@ end
 
 return Style
 ]]></ProtectedString></Properties></Item></Item></Item>
-<Item class="ServerScriptService" referent="RBX00000022"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000021"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+<Item class="ServerScriptService" referent="RBX00000023"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000022"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 
 local Services = script.Services
 local ActionService = require(Services.ActionService)
 local Basket = require(Services.Basket)
+local BossService = require(Services.BossService)
 local BoostService = require(Services.BoostService)
 local DataService = require(Services.DataService)
 local EquipmentService = require(Services.EquipmentService)
@@ -1227,6 +1229,8 @@ BoostService.init(map.zones)
 GuardianService.onKnockout = function(zone, position, def)
 	BoostService.dropFood(zone, position, def.food)
 end
+BossService.init(map.zones)
+GuardianService.beforeHit = BossService.hit
 EquipmentService.init()
 TreasureService.init(map.zones)
 TrainingService.init(map.plots)
@@ -1292,7 +1296,7 @@ Players.PlayerRemoving:Connect(function(player)
 	Basket.release(player)
 	DataService.release(player)
 end)
-]]></ProtectedString></Properties><Item class="Folder" referent="RBX00000020"><Properties><string name="Name">Services</string></Properties><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">ActionService</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+]]></ProtectedString></Properties><Item class="Folder" referent="RBX00000021"><Properties><string name="Name">Services</string></Properties><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">ActionService</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -1735,7 +1739,427 @@ function BoostService.init(zones)
 end
 
 return BoostService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000014"><Properties><string name="Name">DataService</string><ProtectedString name="Source"><![CDATA[local DataStoreService = game:GetService("DataStoreService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000014"><Properties><string name="Name">BossService</string><ProtectedString name="Source"><![CDATA[-- ⚔️ Chefões: de tempos em tempos um bicho gigante (Galo Rei, Porco Rei…) aparece numa rota
+-- onde tem gente. Todo mundo bate nele com 👊; ele persegue devagar e pisoteia o chão.
+-- Quem ajudou ganha moedas, um ovo com muita sorte e comidas de poder.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local AnimalModel = require(Shared.AnimalModel)
+local Balance = require(Shared.Balance)
+local Format = require(Shared.Format)
+local Guardians = require(Shared.Config.Guardians)
+local Rarities = require(Shared.Config.Rarities)
+local Remotes = require(Shared.Remotes)
+local Routes = require(Shared.Config.Routes)
+local Style = require(Shared.Style)
+
+local BoostService = require(script.Parent.BoostService)
+local DataService = require(script.Parent.DataService)
+local FarmService = require(script.Parent.FarmService)
+local Notify = require(script.Parent.Notify)
+
+local BossService = {}
+
+local FIRST_DELAY = 3 * 60
+local INTERVAL_MIN, INTERVAL_MAX = 4 * 60, 6 * 60
+local TIME_LIMIT = 90
+local BASE_HP = 12
+local HP_PER_EXTRA_PLAYER = 6
+local MODEL_SCALE = 3.2
+local HIT_RANGE = 16
+local HIT_COOLDOWN = 0.6
+local SPEED_FACTOR = 0.55 -- em relação ao guardião da rota
+local STOMP_EVERY = 5
+local STOMP_WINDUP = 1
+local STOMP_RADIUS = 16
+local EGG_LUCK = 10
+local COINS_PER_ROUTE = 300
+local FOOD_DROPS = 5
+local KING = Color3.fromRGB(255, 200, 40)
+
+type Boss = {
+	routeId: string,
+	zone: any,
+	def: any,
+	model: Model,
+	root: BasePart,
+	hp: number,
+	maxHp: number,
+	ends: number,
+	nextStomp: number,
+	windupEnds: number,
+	bar: Frame,
+	hpText: TextLabel,
+	warning: BillboardGui,
+	helpers: { [Player]: boolean },
+}
+
+local zones = {}
+local current: Boss? = nil
+local lastHit: { [Player]: number } = {}
+local rng = Random.new()
+local EffectRemote: RemoteEvent
+
+local function flat(v: Vector3): Vector3
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+local function inZone(zone, position: Vector3): boolean
+	local offset = position - zone.origin
+	local half = zone.size / 2
+	return math.abs(offset.X) <= half and math.abs(offset.Z) <= half
+end
+
+local function inSafe(zone, position: Vector3): boolean
+	return (flat(position) - flat(zone.safeCenter)).Magnitude <= zone.safeRadius + 2
+end
+
+local function rootOf(player: Player): BasePart?
+	local character = player.Character
+	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+local function playersIn(zone): { Player }
+	local list = {}
+	for _, player in Players:GetPlayers() do
+		local root = rootOf(player)
+		if root and inZone(zone, root.Position) then
+			table.insert(list, player)
+		end
+	end
+	return list
+end
+
+local function kingName(routeId: string): string
+	local def = Guardians.byRoute[routeId]
+	return (string.gsub(def.name, " Bravo", "")):gsub(" Selvagem", "") .. " Rei"
+end
+
+local function healthBar(root: BasePart, title: string): (Frame, TextLabel)
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "Vida"
+	gui.Size = UDim2.fromOffset(360, 80)
+	gui.StudsOffset = Vector3.new(0, 30, 0)
+	gui.AlwaysOnTop = true
+	gui.MaxDistance = 400
+	gui.LightInfluence = 0
+	local name = Instance.new("TextLabel")
+	name.BackgroundTransparency = 1
+	name.Size = UDim2.new(1, 0, 0, 40)
+	name.Font = Enum.Font.FredokaOne
+	name.TextScaled = true
+	name.Text = "👑 " .. string.upper(title)
+	name.TextColor3 = KING
+	Style.outline(name, 3)
+	name.Parent = gui
+	local back = Instance.new("Frame")
+	back.BackgroundColor3 = Color3.fromRGB(30, 10, 10)
+	back.Position = UDim2.fromOffset(0, 44)
+	back.Size = UDim2.new(1, 0, 0, 30)
+	back.Parent = gui
+	Instance.new("UICorner", back).CornerRadius = UDim.new(0, 12)
+	local fill = Instance.new("Frame")
+	fill.BackgroundColor3 = Color3.fromRGB(235, 60, 60)
+	fill.Size = UDim2.fromScale(1, 1)
+	fill.Parent = back
+	Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 12)
+	local text = Instance.new("TextLabel")
+	text.BackgroundTransparency = 1
+	text.Size = UDim2.fromScale(1, 1)
+	text.ZIndex = 2
+	text.Font = Enum.Font.FredokaOne
+	text.TextScaled = true
+	text.TextColor3 = Color3.new(1, 1, 1)
+	Style.outline(text, 2)
+	text.Parent = back
+	gui.Parent = root
+	return fill, text
+end
+
+local function warningSign(root: BasePart): BillboardGui
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromScale(10, 10)
+	gui.StudsOffset = Vector3.new(0, 22, 0)
+	gui.AlwaysOnTop = true
+	gui.LightInfluence = 0
+	gui.Enabled = false
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.FredokaOne
+	label.Text = "⚠️"
+	label.TextScaled = true
+	label.Parent = gui
+	gui.Parent = root
+	return gui
+end
+
+local function updateBar(boss: Boss)
+	boss.hpText.Text = "❤️ " .. boss.hp .. " / " .. boss.maxHp
+	TweenService:Create(boss.bar, TweenInfo.new(0.2), { Size = UDim2.fromScale(boss.hp / boss.maxHp, 1) }):Play()
+end
+
+local function despawn(boss: Boss)
+	if current == boss then
+		current = nil
+	end
+	Workspace:SetAttribute("ChefeRota", nil)
+	Workspace:SetAttribute("ChefeNome", nil)
+	boss.model:Destroy()
+end
+
+-- Onda de choque no chão (anel que cresce e some).
+local function shockwave(at: Vector3)
+	local ring = Instance.new("Part")
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.3, 4, 4)
+	ring.Color = KING
+	ring.Material = Enum.Material.Neon
+	ring.Transparency = 0.2
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.CanTouch = false
+	ring.CFrame = CFrame.new(Vector3.new(at.X, 0.3, at.Z)) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Parent = Workspace
+	local size = STOMP_RADIUS * 2
+	TweenService:Create(ring, TweenInfo.new(0.4), { Size = Vector3.new(0.3, size, size), Transparency = 1 }):Play()
+	task.delay(0.5, function()
+		ring:Destroy()
+	end)
+end
+
+local function stomp(boss: Boss)
+	local center = boss.root.Position
+	shockwave(center)
+	for _, player in playersIn(boss.zone) do
+		local root = rootOf(player)
+		local shielded = (player:GetAttribute("BoostEscudo") or 0) > Workspace:GetServerTimeNow()
+		if root and not shielded and (flat(root.Position) - flat(center)).Magnitude <= STOMP_RADIUS then
+			-- Só empurra e deixa tonto: chefão é para ser divertido, não para roubar a cesta.
+			EffectRemote:FireClient(player, { kind = "knock", from = center })
+		end
+	end
+end
+
+local function reward(boss: Boss)
+	local index = table.find(Routes.order, boss.routeId) or 1
+	local coins = COINS_PER_ROUTE * index
+	local names = {}
+	for player in boss.helpers do
+		local profile = DataService.get(player)
+		if profile and player.Parent then
+			table.insert(names, player.DisplayName)
+			DataService.addCoins(player, coins)
+			profile.stats.bosses = (profile.stats.bosses or 0) + 1
+			local route = Routes.byId[boss.routeId]
+			local luck = Balance.luck(profile, false, false) * EGG_LUCK
+			local rarity = Balance.rollRarity(luck, rng)
+			local shiny = Balance.rollShiny(luck, rng)
+			local animal = FarmService.addAnimal(player, route.species, rarity, shiny)
+			local shown = animal or { id = "", species = route.species, rarity = rarity, shiny = shiny }
+			Notify.reveal(player, {
+				title = "👑 OVO DO REI!",
+				name = Balance.animalName(shown),
+				color = Rarities.list[rarity].color,
+				sub = "Você ajudou a derrotar o " .. kingName(boss.routeId) .. "! +💰 " .. Format.number(coins),
+			})
+			DataService.push(player)
+		end
+	end
+	for i = 1, FOOD_DROPS do
+		local angle = (i / FOOD_DROPS) * math.pi * 2
+		local at = boss.root.Position + Vector3.new(math.cos(angle) * 8, 0, math.sin(angle) * 8)
+		BoostService.dropFood(boss.zone, Vector3.new(at.X, 0, at.Z), boss.def.food)
+	end
+	Notify.bigAll("⚔️ " .. kingName(boss.routeId) .. " DERROTADO!", "Heróis: " .. table.concat(names, ", "), KING)
+end
+
+-- Golpe do jogador no chefão. Devolve true se acertou (aí o golpe não vai para os guardiões).
+function BossService.hit(player: Player): boolean
+	local boss = current
+	local root = rootOf(player)
+	if not boss or not root then
+		return false
+	end
+	local distance = (flat(boss.root.Position) - flat(root.Position)).Magnitude
+	if distance > HIT_RANGE then
+		return false
+	end
+	local now = os.clock()
+	if lastHit[player] and now - lastHit[player] < HIT_COOLDOWN then
+		return true
+	end
+	lastHit[player] = now
+	boss.helpers[player] = true
+	boss.hp -= 1
+	EffectRemote:FireClient(player, { kind = "pow", at = boss.root.Position + Vector3.new(0, 6, 0) })
+	updateBar(boss)
+	if boss.hp <= 0 then
+		reward(boss)
+		despawn(boss)
+	end
+	return true
+end
+
+local function spawnBoss(routeId: string)
+	local zone = zones[routeId]
+	local def = Guardians.byRoute[routeId]
+	local here = playersIn(zone)
+	local name = kingName(routeId)
+	local model = AnimalModel.build(def.species, Rarities.LEGENDARY, false, name)
+	model.Name = "Chefe"
+	model:ScaleTo(MODEL_SCALE)
+	local root = model.PrimaryPart :: BasePart
+	local tag = root:FindFirstChild("Tag")
+	if tag then
+		tag:Destroy()
+	end
+	local start = zone.origin + Vector3.new(0, 0, -40)
+	model:PivotTo(CFrame.new(start))
+	model.Parent = zone.nodes.Parent
+
+	local maxHp = BASE_HP + HP_PER_EXTRA_PLAYER * math.max(0, #here - 1)
+	local bar, hpText = healthBar(root, name)
+	local boss: Boss = {
+		routeId = routeId,
+		zone = zone,
+		def = def,
+		model = model,
+		root = root,
+		hp = maxHp,
+		maxHp = maxHp,
+		ends = os.clock() + TIME_LIMIT,
+		nextStomp = os.clock() + STOMP_EVERY,
+		windupEnds = 0,
+		bar = bar,
+		hpText = hpText,
+		warning = warningSign(root),
+		helpers = {},
+	}
+	updateBar(boss)
+	current = boss
+	Workspace:SetAttribute("ChefeRota", routeId)
+	Workspace:SetAttribute("ChefeNome", name)
+	Notify.bigAll(
+		"⚔️ CHEFÃO: " .. string.upper(name) .. "!",
+		"Apareceu na " .. Routes.byId[routeId].name .. ". Bata nele com 👊 junto com todo mundo!",
+		KING,
+		"galo"
+	)
+end
+
+local function step(boss: Boss, dt: number, now: number)
+	if now > boss.ends then
+		Notify.bigAll("💨 O " .. kingName(boss.routeId) .. " fugiu!", "Fique atento: outro chefão aparece daqui a pouco", KING)
+		despawn(boss)
+		return
+	end
+	local position = boss.root.Position
+	-- Pisão: avisa (⚠️ e pulinho alto), depois bate no chão.
+	if boss.windupEnds > 0 then
+		local hop = math.sin(math.clamp(1 - (boss.windupEnds - now) / STOMP_WINDUP, 0, 1) * math.pi) * 6
+		boss.root.CFrame = CFrame.new(position.X, hop, position.Z) * boss.root.CFrame.Rotation
+		if now >= boss.windupEnds then
+			boss.windupEnds = 0
+			boss.warning.Enabled = false
+			boss.root.CFrame = CFrame.new(position.X, 0, position.Z) * boss.root.CFrame.Rotation
+			stomp(boss)
+			boss.nextStomp = now + STOMP_EVERY
+		end
+		return
+	end
+	if now >= boss.nextStomp then
+		boss.windupEnds = now + STOMP_WINDUP
+		boss.warning.Enabled = true
+		return
+	end
+	-- Anda devagar atrás do jogador mais perto (fora da zona segura).
+	local target: BasePart? = nil
+	local best = math.huge
+	for _, player in playersIn(boss.zone) do
+		local root = rootOf(player)
+		if root and not inSafe(boss.zone, root.Position) then
+			local distance = (flat(root.Position) - flat(position)).Magnitude
+			if distance < best then
+				target, best = root, distance
+			end
+		end
+	end
+	if not target or best < 6 then
+		return
+	end
+	local direction = (flat((target :: BasePart).Position) - flat(position)).Unit
+	local moved = flat(position) + direction * boss.def.speed * SPEED_FACTOR * dt
+	if inSafe(boss.zone, moved) then
+		return
+	end
+	local hop = math.abs(math.sin(now * 5)) * 0.8
+	local at = Vector3.new(moved.X, hop, moved.Z)
+	boss.root.CFrame = CFrame.lookAt(at, at + direction)
+end
+
+local function tryStart()
+	if current then
+		return
+	end
+	local candidates = {}
+	for _, routeId in Routes.order do
+		local zone = zones[routeId]
+		if zone and #playersIn(zone) > 0 then
+			table.insert(candidates, routeId)
+		end
+	end
+	if #candidates > 0 then
+		spawnBoss(candidates[rng:NextInteger(1, #candidates)])
+	end
+end
+
+function BossService.init(zoneMap)
+	zones = zoneMap
+	EffectRemote = Remotes.event("Effect")
+
+	RunService.Heartbeat:Connect(function(dt)
+		local boss = current
+		if boss then
+			step(boss, dt, os.clock())
+		end
+	end)
+
+	task.spawn(function()
+		task.wait(FIRST_DELAY)
+		while true do
+			tryStart()
+			-- Sem ninguém nas rotas, tenta de novo logo; senão espera o intervalo.
+			task.wait(if current then rng:NextNumber(INTERVAL_MIN, INTERVAL_MAX) else 20)
+		end
+	end)
+
+	-- Só no Studio: marcar Workspace.ForcarChefe = true chama um chefão na hora (para testar).
+	if RunService:IsStudio() then
+		Workspace:GetAttributeChangedSignal("ForcarChefe"):Connect(function()
+			if Workspace:GetAttribute("ForcarChefe") then
+				Workspace:SetAttribute("ForcarChefe", nil)
+				tryStart()
+			end
+		end)
+	end
+
+	Players.PlayerRemoving:Connect(function(player)
+		lastHit[player] = nil
+		if current then
+			current.helpers[player] = nil
+		end
+	end)
+end
+
+return BossService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000015"><Properties><string name="Name">DataService</string><ProtectedString name="Source"><![CDATA[local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -1779,7 +2203,7 @@ local function template()
 		mission = { index = 1, base = 0 },
 		routes = { Galinheiro = true },
 		index = {},
-		stats = { legendaries = 0, nests = 0, collected = 0, deposited = 0, evolved = 0, chests = 0, knockouts = 0 },
+		stats = { legendaries = 0, nests = 0, collected = 0, deposited = 0, evolved = 0, chests = 0, knockouts = 0, bosses = 0 },
 		lastOnline = 0,
 	}
 end
@@ -1977,7 +2401,7 @@ function DataService.init()
 end
 
 return DataService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000015"><Properties><string name="Name">EquipmentService</string><ProtectedString name="Source"><![CDATA[-- Mostra os equipamentos comprados no boneco (todo mundo vê):
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000016"><Properties><string name="Name">EquipmentService</string><ProtectedString name="Source"><![CDATA[-- Mostra os equipamentos comprados no boneco (todo mundo vê):
 -- 👢 botas nos pés, 🥅 rede na mão e 🧺 cesta nas costas que enche conforme a coleta.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -2156,7 +2580,7 @@ function EquipmentService.init()
 end
 
 return EquipmentService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000016"><Properties><string name="Name">FarmService</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000017"><Properties><string name="Name">FarmService</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
@@ -2521,7 +2945,7 @@ function FarmService.init(plotList)
 end
 
 return FarmService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000017"><Properties><string name="Name">GuardianService</string><ProtectedString name="Source"><![CDATA[-- Guardiões: bichos bravos que vigiam cada rota. Quando alguém mexe num ninho (ou às vezes
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">GuardianService</string><ProtectedString name="Source"><![CDATA[-- Guardiões: bichos bravos que vigiam cada rota. Quando alguém mexe num ninho (ou às vezes
 -- num item), o guardião mais perto corre atrás. Se pegar, empurra, deixa tonto e derruba
 -- parte da cesta no chão, que o jogador pode pegar de volta.
 local Players = game:GetService("Players")
@@ -2601,6 +3025,7 @@ local lastHit: { [Player]: number } = {}
 local updateTag: (Guardian) -> ()
 
 -- Chamado quando um guardião desmaia (init.server liga no BoostService para soltar a comida).
+GuardianService.beforeHit = nil :: ((Player) -> boolean)?
 GuardianService.onKnockout = nil :: ((zone: any, position: Vector3, def: Def, player: Player) -> ())?
 
 local function flat(v: Vector3): Vector3
@@ -3029,6 +3454,10 @@ function GuardianService.init(zones)
 	end
 
 	Remotes.event("Bater").OnServerEvent:Connect(function(player)
+		-- O chefão tem prioridade: se o golpe acertou ele, não vai para os guardiões.
+		if GuardianService.beforeHit and GuardianService.beforeHit(player) then
+			return
+		end
 		GuardianService.hit(player)
 	end)
 
@@ -3049,7 +3478,7 @@ function GuardianService.init(zones)
 end
 
 return GuardianService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -3994,7 +4423,7 @@ function MapBuilder.build(): { plots: { Plot }, zones: { [string]: Zone }, porta
 end
 
 return MapBuilder
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">MissionService</string><ProtectedString name="Source"><![CDATA[-- Acompanha a missão atual de cada jogador, paga o prêmio ao completar e publica o estado
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">MissionService</string><ProtectedString name="Source"><![CDATA[-- Acompanha a missão atual de cada jogador, paga o prêmio ao completar e publica o estado
 -- em atributos ("Missao*") para o painel do HUD e o guia.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -4092,7 +4521,7 @@ function MissionService.init()
 end
 
 return MissionService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">Notify</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">Notify</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Remotes = require(ReplicatedStorage:WaitForChild("Shared").Remotes)
 
@@ -4114,8 +4543,8 @@ function Notify.welcome(player: Player, amount: number, seconds: number)
 	NotifyRemote:FireClient(player, { kind = "welcome", amount = amount, seconds = seconds, sfx = "guardar" })
 end
 
-function Notify.bigAll(title: string, subtitle: string?, color: Color3?)
-	NotifyRemote:FireAllClients({ kind = "big", text = title, sub = subtitle, color = color })
+function Notify.bigAll(title: string, subtitle: string?, color: Color3?, sfx: string?)
+	NotifyRemote:FireAllClients({ kind = "big", text = title, sub = subtitle, color = color, sfx = sfx })
 end
 
 function Notify.reveal(player: Player, payload)
@@ -4124,7 +4553,7 @@ function Notify.reveal(player: Player, payload)
 end
 
 return Notify
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">PassService</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001C"><Properties><string name="Name">PassService</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GamePasses = require(ReplicatedStorage:WaitForChild("Shared").Config.GamePasses)
@@ -4199,7 +4628,7 @@ function PassService.init()
 end
 
 return PassService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001C"><Properties><string name="Name">RouteService</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001D"><Properties><string name="Name">RouteService</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -4742,7 +5171,7 @@ function RouteService.init(zoneMap, portals: { [string]: BasePart })
 end
 
 return RouteService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001D"><Properties><string name="Name">Teleport</string><ProtectedString name="Source"><![CDATA[local Teleport = {}
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001E"><Properties><string name="Name">Teleport</string><ProtectedString name="Source"><![CDATA[local Teleport = {}
 
 function Teleport.to(player: Player, target: CFrame): boolean
 	local character = player.Character
@@ -4760,7 +5189,7 @@ function Teleport.to(player: Player, target: CFrame): boolean
 end
 
 return Teleport
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001E"><Properties><string name="Name">TrainingService</string><ProtectedString name="Source"><![CDATA[-- Treino na esteira: quem está em cima da lona corre sozinho (animação no cliente) e ganha
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001F"><Properties><string name="Name">TrainingService</string><ProtectedString name="Source"><![CDATA[-- Treino na esteira: quem está em cima da lona corre sozinho (animação no cliente) e ganha
 -- Balance.TRAIN_GAIN pontos por segundo; cada TRAIN_PER_SPEED pontos = +1 de velocidade.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -4864,7 +5293,7 @@ function TrainingService.init(plots)
 end
 
 return TrainingService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001F"><Properties><string name="Name">TreasureService</string><ProtectedString name="Source"><![CDATA[-- Baú do Tesouro no topo da árvore de cada rota. Cada jogador pode abrir a cada 5 minutos.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000020"><Properties><string name="Name">TreasureService</string><ProtectedString name="Source"><![CDATA[-- Baú do Tesouro no topo da árvore de cada rota. Cada jogador pode abrir a cada 5 minutos.
 -- Os itens vão para a cesta (ainda precisa levar para casa); as moedas entram na hora.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -4957,7 +5386,7 @@ end
 
 return TreasureService
 ]]></ProtectedString></Properties></Item></Item></Item></Item>
-<Item class="StarterPlayer" referent="RBX0000003C"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX0000003B"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX0000003A"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+<Item class="StarterPlayer" referent="RBX0000003D"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX0000003C"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX0000003B"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -5169,7 +5598,7 @@ while true do
 	TrainingPanel.tick()
 	task.wait(0.5)
 end
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX00000023"><Properties><string name="Name">DoubleJump</string><ProtectedString name="Source"><![CDATA[-- Pulo duplo/triplo das Botas de Pulo. JumpRequest dispara tanto no teclado quanto no
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX00000024"><Properties><string name="Name">DoubleJump</string><ProtectedString name="Source"><![CDATA[-- Pulo duplo/triplo das Botas de Pulo. JumpRequest dispara tanto no teclado quanto no
 -- botão de pular do celular. Os pulos extras recarregam ao encostar no chão.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -5260,7 +5689,7 @@ function DoubleJump.start()
 end
 
 return DoubleJump
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000024"><Properties><string name="Name">Effects</string><ProtectedString name="Source"><![CDATA[-- Efeitos pedidos pelo servidor que precisam rodar no cliente (o personagem é do cliente).
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000025"><Properties><string name="Name">Effects</string><ProtectedString name="Source"><![CDATA[-- Efeitos pedidos pelo servidor que precisam rodar no cliente (o personagem é do cliente).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -5348,7 +5777,7 @@ function Effects.start()
 end
 
 return Effects
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000025"><Properties><string name="Name">Guide</string><ProtectedString name="Source"><![CDATA[-- Diz ao jogador o que fazer agora, em poucas palavras, e mostra o caminho:
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000026"><Properties><string name="Name">Guide</string><ProtectedString name="Source"><![CDATA[-- Diz ao jogador o que fazer agora, em poucas palavras, e mostra o caminho:
 -- trilha de bolinhas no chão + seta pulando em cima do objetivo, ou seta num botão do menu.
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -5437,6 +5866,14 @@ local function nearestGuardian(routeId: string, from: Vector3): Vector3?
 		end
 	end
 	return best
+end
+
+local function bossPosition(routeId: string): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	local boss = zone and zone:FindFirstChild("Chefe")
+	return if boss then (boss :: Model):GetPivot().Position else nil
 end
 
 local function portalPosition(routeId: string): Vector3?
@@ -5554,7 +5991,13 @@ function Guide.update()
 	local missionUpgrade = player:GetAttribute("MissaoUpgrade")
 	local basket = player:GetAttribute("Cesta") or 0
 	local basketFull = basket >= (player:GetAttribute("CestaMax") or math.huge)
-	if player:GetAttribute("NaEsteira") then
+	local bossRoute = Workspace:GetAttribute("ChefeRota")
+	local bossName = Workspace:GetAttribute("ChefeNome") or "Chefão"
+	if bossRoute and zone == bossRoute and not chaser then
+		text, place = "⚔️ Bata no " .. bossName .. " com 👊 (F)!", bossPosition(bossRoute)
+	elseif bossRoute and not zone and profile.routes[bossRoute] then
+		text, place = "⚔️ Chefão! Entre no portal e ajude!", portalPosition(bossRoute)
+	elseif player:GetAttribute("NaEsteira") then
 		local points = player:GetAttribute("Treino") or 0
 		if points >= (player:GetAttribute("TreinoMax") or math.huge) then
 			text = "🏃 Treino completo! Velocidade máxima"
@@ -5689,7 +6132,7 @@ function Guide.start()
 end
 
 return Guide
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000026"><Properties><string name="Name">Punch</string><ProtectedString name="Source"><![CDATA[-- 👊 Bater: tecla F (ou botão X do controle) e um botão na tela do celular.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000027"><Properties><string name="Name">Punch</string><ProtectedString name="Source"><![CDATA[-- 👊 Bater: tecla F (ou botão X do controle) e um botão na tela do celular.
 -- O cliente só faz o avanço e a animação; quem decide se acertou é o servidor (GuardianService.hit).
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
@@ -5782,7 +6225,7 @@ function Punch.pow(at: Vector3)
 end
 
 return Punch
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000027"><Properties><string name="Name">Rainbow</string><ProtectedString name="Source"><![CDATA[-- Peças marcadas com a tag de arco-íris (animais Míticos) trocam de cor sem parar.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000028"><Properties><string name="Name">Rainbow</string><ProtectedString name="Source"><![CDATA[-- Peças marcadas com a tag de arco-íris (animais Míticos) trocam de cor sem parar.
 -- Roda no cliente para não mandar mudança de cor pela rede a cada quadro.
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -5807,7 +6250,7 @@ function Rainbow.start()
 end
 
 return Rainbow
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000028"><Properties><string name="Name">Sfx</string><ProtectedString name="Source"><![CDATA[-- Toca os efeitos sonoros só para este jogador (SoundService:PlayLocalSound).
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000029"><Properties><string name="Name">Sfx</string><ProtectedString name="Source"><![CDATA[-- Toca os efeitos sonoros só para este jogador (SoundService:PlayLocalSound).
 local ContentProvider = game:GetService("ContentProvider")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
@@ -5845,7 +6288,7 @@ function Sfx.start()
 end
 
 return Sfx
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000029"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002A"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -5941,7 +6384,7 @@ function State.start()
 end
 
 return State
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002A"><Properties><string name="Name">Treadmill</string><ProtectedString name="Source"><![CDATA[-- Visual da esteira no cliente: setas da lona correndo, boneco correndo sozinho,
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002B"><Properties><string name="Name">Treadmill</string><ProtectedString name="Source"><![CDATA[-- Visual da esteira no cliente: setas da lona correndo, boneco correndo sozinho,
 -- "+10 ⚡" subindo a cada ganho e aura de fogo enquanto treina.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -6126,7 +6569,7 @@ function Treadmill.start()
 end
 
 return Treadmill
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000038"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX0000002B"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000039"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX0000002C"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
@@ -6490,7 +6933,7 @@ function Hud.tick()
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002C"><Properties><string name="Name">Kit</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002D"><Properties><string name="Name">Kit</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
 
 local Kit = {}
 
@@ -6635,7 +7078,7 @@ function Kit.section(text: string, order: number): TextLabel
 end
 
 return Kit
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002D"><Properties><string name="Name">MissionPanel</string><ProtectedString name="Source"><![CDATA[-- Painel fixo da missão atual (lado direito): número, texto, barra de progresso e prêmio.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002E"><Properties><string name="Name">MissionPanel</string><ProtectedString name="Source"><![CDATA[-- Painel fixo da missão atual (lado direito): número, texto, barra de progresso e prêmio.
 -- Lê os atributos "Missao*" publicados pelo MissionService.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -6758,7 +7201,7 @@ function MissionPanel.tick()
 end
 
 return MissionPanel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002E"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002F"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
 
 local Kit = require(script.Parent.Kit)
 
@@ -6983,7 +7426,7 @@ function Notifications.reveal(payload)
 end
 
 return Notifications
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000034"><Properties><string name="Name">Pages</string></Properties><Item class="ModuleScript" referent="RBX0000002F"><Properties><string name="Name">Animais</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000035"><Properties><string name="Name">Pages</string></Properties><Item class="ModuleScript" referent="RBX00000030"><Properties><string name="Name">Animais</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
@@ -7162,7 +7605,7 @@ return function(content: Frame, profile, ctx)
 		sellButton(buttons, animal, ctx)
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000030"><Properties><string name="Name">Indice</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000031"><Properties><string name="Name">Indice</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Rarities = require(Shared.Config.Rarities)
@@ -7226,7 +7669,7 @@ return function(content: Frame, profile, _ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000031"><Properties><string name="Name">Loja</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000032"><Properties><string name="Name">Loja</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -7415,7 +7858,7 @@ return function(content: Frame, profile, ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000032"><Properties><string name="Name">Mochila</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000033"><Properties><string name="Name">Mochila</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Format = require(Shared.Format)
@@ -7486,7 +7929,7 @@ return function(content: Frame, profile, _ctx)
 		})
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000033"><Properties><string name="Name">Rotas</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000034"><Properties><string name="Name">Rotas</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
@@ -7583,7 +8026,7 @@ return function(content: Frame, profile, ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000035"><Properties><string name="Name">Panel</string><ProtectedString name="Source"><![CDATA[local Kit = require(script.Parent.Kit)
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000036"><Properties><string name="Name">Panel</string><ProtectedString name="Source"><![CDATA[local Kit = require(script.Parent.Kit)
 
 export type Context = {
 	act: (action: string, arg: string?) -> (boolean, any),
@@ -7705,7 +8148,7 @@ function Panel:refreshCosts(coins: number)
 end
 
 return Panel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000036"><Properties><string name="Name">TrainingPanel</string><ProtectedString name="Source"><![CDATA[-- Painel que aparece embaixo enquanto o jogador está na esteira: quanto ganha por segundo,
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000037"><Properties><string name="Name">TrainingPanel</string><ProtectedString name="Source"><![CDATA[-- Painel que aparece embaixo enquanto o jogador está na esteira: quanto ganha por segundo,
 -- barra até o próximo +1 e "⚡ 18 → 19", com o próximo guardião a ultrapassar.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -7796,7 +8239,7 @@ function TrainingPanel.tick()
 end
 
 return TrainingPanel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000037"><Properties><string name="Name">Welcome</string><ProtectedString name="Source"><![CDATA[-- Janela "Bem-vindo de volta!" com os ganhos offline (as moedas já entraram no servidor;
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000038"><Properties><string name="Name">Welcome</string><ProtectedString name="Source"><![CDATA[-- Janela "Bem-vindo de volta!" com os ganhos offline (as moedas já entraram no servidor;
 -- o botão só fecha a janela com festa).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -7916,7 +8359,7 @@ function Welcome.show(gui: ScreenGui, scales: { UIScale }, amount: number, secon
 end
 
 return Welcome
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000039"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX0000003A"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -7985,5 +8428,5 @@ end
 
 return World
 ]]></ProtectedString></Properties></Item></Item></Item></Item>
-<Item class="Lighting" referent="RBX0000003D"><Properties><string name="Name">Lighting</string><token name="Technology">4</token></Properties></Item>
+<Item class="Lighting" referent="RBX0000003E"><Properties><string name="Name">Lighting</string><token name="Technology">4</token></Properties></Item>
 </roblox>

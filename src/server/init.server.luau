@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local Services = script.Services
 local ActionService = require(Services.ActionService)
 local Basket = require(Services.Basket)
+local BossService = require(Services.BossService)
 local BoostService = require(Services.BoostService)
 local DataService = require(Services.DataService)
 local EquipmentService = require(Services.EquipmentService)
@@ -26,6 +27,8 @@ BoostService.init(map.zones)
 GuardianService.onKnockout = function(zone, position, def)
 	BoostService.dropFood(zone, position, def.food)
 end
+BossService.init(map.zones)
+GuardianService.beforeHit = BossService.hit
 EquipmentService.init()
 TreasureService.init(map.zones)
 TrainingService.init(map.plots)

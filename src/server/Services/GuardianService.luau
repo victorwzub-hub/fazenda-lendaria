@@ -78,6 +78,7 @@ local lastHit: { [Player]: number } = {}
 local updateTag: (Guardian) -> ()
 
 -- Chamado quando um guardião desmaia (init.server liga no BoostService para soltar a comida).
+GuardianService.beforeHit = nil :: ((Player) -> boolean)?
 GuardianService.onKnockout = nil :: ((zone: any, position: Vector3, def: Def, player: Player) -> ())?
 
 local function flat(v: Vector3): Vector3
@@ -506,6 +507,10 @@ function GuardianService.init(zones)
 	end
 
 	Remotes.event("Bater").OnServerEvent:Connect(function(player)
+		-- O chefão tem prioridade: se o golpe acertou ele, não vai para os guardiões.
+		if GuardianService.beforeHit and GuardianService.beforeHit(player) then
+			return
+		end
 		GuardianService.hit(player)
 	end)
 
