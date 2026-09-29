@@ -15,7 +15,8 @@ local PORTAL_RADIUS = 58
 local HUB_SIZE = 440
 local SAFE_RADIUS = 22
 
-local GRASS = Color3.fromRGB(96, 196, 70)
+local GRASS = Color3.fromRGB(118, 214, 82)
+local GRASS_DARK = Color3.fromRGB(88, 180, 62)
 local SAND = Color3.fromRGB(230, 212, 160)
 local WOOD = Color3.fromRGB(150, 105, 65)
 local FENCE = Color3.fromRGB(238, 228, 208)
@@ -28,6 +29,7 @@ export type Plot = {
 	sign: TextLabel,
 	animals: Folder,
 	treadmill: BasePart,
+	incubator: { anchor: BasePart, slots: { CFrame } },
 	owner: Player?,
 }
 
@@ -148,14 +150,28 @@ local function setupLighting()
 	end
 end
 
-local function island(parent: Instance, center: Vector3, size: number, color: Color3, material: Enum.Material)
+-- Chão xadrez: quadrados alternando um tom claro e um escuro (regra para todos os biomas).
+local CHECKER_TILE = 22
+
+local function checker(parent: Instance, center: CFrame, size: number, height: number, light: Color3, dark: Color3, material: Enum.Material)
+	local count = math.max(1, math.floor(size / CHECKER_TILE + 0.5))
+	local tile = size / count
+	for x = 0, count - 1 do
+		for z = 0, count - 1 do
+			local offset = Vector3.new(-size / 2 + tile * (x + 0.5), 0, -size / 2 + tile * (z + 0.5))
+			block(parent, Vector3.new(tile, height, tile), center * CFrame.new(offset), if (x + z) % 2 == 0 then light else dark, material)
+		end
+	end
+end
+
+local function island(parent: Instance, center: Vector3, size: number, color: Color3, material: Enum.Material, dark: Color3)
 	Workspace.Terrain:FillBlock(
 		CFrame.new(center.X, -8, center.Z),
 		Vector3.new(size + 700, 12, size + 700),
 		Enum.Material.Water
 	)
 	block(parent, Vector3.new(size + 24, 3, size + 24), CFrame.new(center.X, -2.5, center.Z), SAND, Enum.Material.Sand)
-	block(parent, Vector3.new(size, 4, size), CFrame.new(center.X, -2, center.Z), color, material)
+	checker(parent, CFrame.new(center.X, -2, center.Z), size, 4, color, dark, material)
 end
 
 local function fenceLine(parent: Instance, cframe: CFrame, length: number)
@@ -285,21 +301,6 @@ local function flower(parent: Instance, position: Vector3, rng: Random)
 	decor(block(parent, Vector3.new(0.45, 0.5, 0.45), base * CFrame.new(0, height + 0.3, 0), Color3.fromRGB(255, 200, 40)))
 end
 
--- Manchas de grama em outro tom quebram o chão "chapado".
-local function patch(parent: Instance, position: Vector3, ground: Color3, rng: Random)
-	local size = rng:NextNumber(6, 14)
-	local tone = if rng:NextNumber() < 0.5 then -0.1 else 0.08
-	decor(
-		block(
-			parent,
-			Vector3.new(size, 0.2, size * rng:NextNumber(0.6, 1)),
-			CFrame.new(position + Vector3.new(0, 0.1, 0)) * CFrame.Angles(0, rad(rng:NextNumber(0, 90)), 0),
-			Style.shade(ground, tone),
-			Enum.Material.Grass
-		)
-	)
-end
-
 -- Arbusto em degraus, como os dos simuladores.
 local function bush(parent: Instance, position: Vector3, foliage: Color3, rng: Random)
 	local base = CFrame.new(position) * CFrame.Angles(0, rad(rng:NextNumber(0, 90)), 0)
@@ -367,7 +368,7 @@ local function buildHub(world: Instance): SpawnLocation
 	local hub = Instance.new("Model")
 	hub.Name = "Centro"
 	hub.Parent = world
-	island(hub, Vector3.zero, HUB_SIZE, GRASS, Enum.Material.Grass)
+	island(hub, Vector3.zero, HUB_SIZE, GRASS, Enum.Material.Grass, GRASS_DARK)
 
 	block(
 		hub,
@@ -451,10 +452,6 @@ local function buildHub(world: Instance): SpawnLocation
 			local at = CFrame.Angles(0, path, 0) * CFrame.new(rng:NextNumber(-7, 7), 0, 30 + step * 12)
 			flower(hub, at.Position, rng)
 		end
-		for _ = 1, 3 do
-			local angle = between + rad(rng:NextNumber(-18, 18))
-			patch(hub, (CFrame.Angles(0, angle, 0) * CFrame.new(0, 0, rng:NextNumber(190, 212))).Position, GRASS, rng)
-		end
 	end
 
 	local spawn = Instance.new("SpawnLocation")
@@ -527,6 +524,49 @@ local function buildTreadmill(parent: Instance, at: CFrame): BasePart
 	return belt
 end
 
+-- Chocadeira: mesa com 3 ninhos e lâmpada quente. Os ovos (EggService) ficam nos "slots".
+local function buildIncubator(parent: Instance, at: CFrame): { anchor: BasePart, slots: { CFrame } }
+	local model = Instance.new("Model")
+	model.Name = "Chocadeira"
+	model.Parent = parent
+	local wood = Color3.fromRGB(170, 110, 60)
+	local top = block(model, Vector3.new(13, 1, 4.4), at * CFrame.new(0, 2, 0), wood, Enum.Material.WoodPlanks)
+	for _, x in { -6, 6 } do
+		for _, z in { -1.8, 1.8 } do
+			block(model, Vector3.new(0.8, 1.6, 0.8), at * CFrame.new(x, 0.8, z), Style.shade(wood, -0.2), Enum.Material.WoodPlanks)
+		end
+	end
+	local slots = {}
+	local straw = Color3.fromRGB(222, 180, 90)
+	for i, x in { -4.2, 0, 4.2 } do
+		for side = 0, 3 do
+			local ring = CFrame.Angles(0, side * math.pi / 2, 0)
+			decor(block(model, Vector3.new(3.2, 0.7, 0.6), at * CFrame.new(x, 2.85, 0) * ring * CFrame.new(0, 0, 1.3), straw, Enum.Material.Fabric))
+		end
+		slots[i] = at * CFrame.new(x, 3.9, 0)
+	end
+	-- Lâmpada de calor.
+	block(model, Vector3.new(0.5, 6, 0.5), at * CFrame.new(0, 5, 2.4), Color3.fromRGB(60, 60, 70), Enum.Material.Metal)
+	block(model, Vector3.new(12, 0.4, 0.5), at * CFrame.new(0, 7.9, 2.4), Color3.fromRGB(60, 60, 70), Enum.Material.Metal)
+	for _, x in { -4.2, 0, 4.2 } do
+		local lamp = decor(block(model, Vector3.new(1.4, 0.7, 1.4), at * CFrame.new(x, 7.4, 1.6), Color3.fromRGB(255, 160, 60), Enum.Material.Neon))
+		local light = Instance.new("PointLight")
+		light.Color = Color3.fromRGB(255, 170, 80)
+		light.Range = 8
+		light.Brightness = 1.2
+		light.Parent = lamp
+	end
+	textLabel(
+		billboard(top, UDim2.fromOffset(260, 50), Vector3.new(0, 8.5, 0), 160),
+		"Titulo",
+		"🐣 CHOCADEIRA",
+		UDim2.fromScale(1, 1),
+		UDim2.fromScale(0, 0),
+		Color3.fromRGB(255, 200, 120)
+	)
+	return { anchor = top, slots = slots }
+end
+
 local function buildPlot(parent: Instance, index: number): Plot
 	local angle = (index - 0.5) * (2 * math.pi / PLOT_COUNT)
 	local cframe = CFrame.Angles(0, angle, 0) * CFrame.new(0, 1, PLOT_RADIUS)
@@ -536,13 +576,7 @@ local function buildPlot(parent: Instance, index: number): Plot
 	model.Name = "Lote" .. index
 	model.Parent = parent
 
-	block(
-		model,
-		Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
-		cframe * CFrame.new(0, -0.5, 0),
-		Color3.fromRGB(118, 208, 78),
-		Enum.Material.Grass
-	)
+	checker(model, cframe * CFrame.new(0, -0.5, 0), PLOT_SIZE, 1, Color3.fromRGB(128, 222, 88), Color3.fromRGB(98, 190, 70), Enum.Material.Grass)
 	fenceLine(model, cframe * CFrame.new(0, 0, half), PLOT_SIZE)
 	fenceLine(model, cframe * CFrame.new(half, 0, 0) * CFrame.Angles(0, rad(90), 0), PLOT_SIZE)
 	fenceLine(model, cframe * CFrame.new(-half, 0, 0) * CFrame.Angles(0, rad(90), 0), PLOT_SIZE)
@@ -577,6 +611,7 @@ local function buildPlot(parent: Instance, index: number): Plot
 	)
 
 	local treadmill = buildTreadmill(model, cframe * CFrame.new(21, 0, -16))
+	local incubator = buildIncubator(model, cframe * CFrame.new(-22, 0, -3))
 
 	local gui = billboard(beam, UDim2.fromScale(18, 3), Vector3.new(0, 2.4, 0), 250)
 	local sign =
@@ -593,6 +628,7 @@ local function buildPlot(parent: Instance, index: number): Plot
 		sign = sign,
 		animals = animals,
 		treadmill = treadmill,
+		incubator = incubator,
 		owner = nil,
 	}
 end
@@ -646,6 +682,16 @@ local ROUTE_DECOR: { [string]: (Instance, any, Random, (number) -> Vector3) -> (
 		end
 	end,
 	Pradaria = function(parent, _route, rng, randomPoint)
+		-- Trigais dourados.
+		for _ = 1, 22 do
+			local center = randomPoint(10)
+			for _ = 1, 9 do
+				local at = center + Vector3.new(rng:NextNumber(-4, 4), 0, rng:NextNumber(-4, 4))
+				local height = rng:NextNumber(2.2, 3.4)
+				decor(block(parent, Vector3.new(0.35, height, 0.35), CFrame.new(at + Vector3.new(0, height / 2, 0)), Color3.fromRGB(215, 175, 60)))
+				decor(block(parent, Vector3.new(0.7, 0.9, 0.7), CFrame.new(at + Vector3.new(0, height + 0.3, 0)), Color3.fromRGB(245, 205, 85)))
+			end
+		end
 		for _ = 1, 16 do
 			block(
 				parent,
@@ -744,7 +790,7 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 	local model = Instance.new("Model")
 	model.Name = routeId
 	model.Parent = parent
-	island(model, origin, size, route.ground, route.groundMaterial)
+	island(model, origin, size, route.ground, route.groundMaterial, route.groundDark)
 
 	local spawnPosition = origin + Vector3.new(0, 3, half - 24)
 	local spawn = CFrame.lookAt(spawnPosition, origin + Vector3.new(0, 3, 0))
@@ -856,9 +902,6 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 	end
 	for _ = 1, math.floor(size / 8) do
 		bush(scenery, randomPoint(6), route.foliage, rng)
-	end
-	for _ = 1, math.floor(size / 5) do
-		patch(scenery, randomPoint(8), route.ground, rng)
 	end
 	for _ = 1, math.floor(size / 4) do
 		flower(scenery, randomPoint(4), rng)

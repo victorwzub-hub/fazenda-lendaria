@@ -18,10 +18,13 @@ Balance.OFFLINE_RATE = 0.5
 Balance.OFFLINE_MAX_SECONDS = 8 * 60 * 60
 Balance.SELL_SECONDS = 20
 Balance.BOOST_SPEED = 8
--- Treino: +10 pontos por segundo na esteira (x Esteira Turbo); 100 pontos = +1 de velocidade, até +30.
+-- Treino: +10 pontos por segundo na esteira (x Esteira Turbo). Cada nível de velocidade custa
+-- 20, 25, 30… pontos: ⚡20 em ~11 s e ⚡26 em ~42 s (impacto rápido); os últimos demoram.
 Balance.TRAIN_GAIN = 10
-Balance.TRAIN_PER_SPEED = 100
-Balance.TRAIN_MAX = 3000
+Balance.TRAIN_FIRST = 20
+Balance.TRAIN_STEP = 5
+Balance.TRAIN_LEVELS = 30
+Balance.TRAIN_MAX = Balance.TRAIN_LEVELS * Balance.TRAIN_FIRST + Balance.TRAIN_STEP * Balance.TRAIN_LEVELS * (Balance.TRAIN_LEVELS - 1) / 2
 Balance.BASE_SPEED = 16
 Balance.BOOTS_SPEED = 3
 Balance.BASKET_BASE = 20
@@ -84,8 +87,23 @@ function Balance.trainGain(profile): number
 	return Balance.TRAIN_GAIN * (1 + (profile.upgrades.Esteira or 0))
 end
 
+-- Devolve (nível, pontos dentro do nível, custo do próximo nível).
+function Balance.trainProgress(points: number): (number, number, number)
+	local level = 0
+	local remaining = math.max(0, points)
+	while level < Balance.TRAIN_LEVELS do
+		local cost = Balance.TRAIN_FIRST + Balance.TRAIN_STEP * level
+		if remaining < cost then
+			return level, remaining, cost
+		end
+		remaining -= cost
+		level += 1
+	end
+	return level, 0, 0
+end
+
 function Balance.trainedSpeed(profile): number
-	return math.floor(math.min(profile.training or 0, Balance.TRAIN_MAX) / Balance.TRAIN_PER_SPEED)
+	return (Balance.trainProgress(profile.training or 0))
 end
 
 function Balance.walkSpeed(profile): number

@@ -74,9 +74,9 @@ function TrainingPanel.tick()
 		return
 	end
 	title.Text = "🏃 TREINANDO  +" .. Balance.trainGain(profile) .. "/s"
-	local within = points % Balance.TRAIN_PER_SPEED
-	speedText.Text = "⚡ " .. speed .. "  →  " .. (speed + 1) .. "     (" .. within .. "/" .. Balance.TRAIN_PER_SPEED .. ")"
-	TweenService:Create(fill, TweenInfo.new(0.45), { Size = UDim2.fromScale(within / Balance.TRAIN_PER_SPEED, 1) }):Play()
+	local _, within, cost = Balance.trainProgress(points)
+	speedText.Text = "⚡ " .. speed .. "  →  " .. (speed + 1) .. "     (" .. within .. "/" .. cost .. ")"
+	TweenService:Create(fill, TweenInfo.new(0.45), { Size = UDim2.fromScale(within / math.max(cost, 1), 1) }):Play()
 	-- Mostra o próximo guardião a ultrapassar: é o motivo de treinar.
 	goalText.Text = "Você já corre mais que todos os guardiões! 🏆"
 	for _, routeId in Guardians.order do

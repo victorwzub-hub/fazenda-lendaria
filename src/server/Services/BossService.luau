@@ -19,7 +19,7 @@ local Style = require(Shared.Style)
 
 local BoostService = require(script.Parent.BoostService)
 local DataService = require(script.Parent.DataService)
-local FarmService = require(script.Parent.FarmService)
+local EggService = require(script.Parent.EggService)
 local Notify = require(script.Parent.Notify)
 
 local BossService = {}
@@ -220,14 +220,8 @@ local function reward(boss: Boss)
 			local luck = Balance.luck(profile, false, false) * EGG_LUCK
 			local rarity = Balance.rollRarity(luck, rng)
 			local shiny = Balance.rollShiny(luck, rng)
-			local animal = FarmService.addAnimal(player, route.species, rarity, shiny)
-			local shown = animal or { id = "", species = route.species, rarity = rarity, shiny = shiny }
-			Notify.reveal(player, {
-				title = "👑 OVO DO REI!",
-				name = Balance.animalName(shown),
-				color = Rarities.list[rarity].color,
-				sub = "Você ajudou a derrotar o " .. kingName(boss.routeId) .. "! +💰 " .. Format.number(coins),
-			})
+			EggService.give(player, route.species, rarity, shiny, "👑 OVO DO REI!")
+			Notify.toast(player, "⚔️ Você ajudou a derrotar o " .. kingName(boss.routeId) .. "! +💰 " .. Format.number(coins), KING)
 			DataService.push(player)
 		end
 	end

@@ -210,6 +210,10 @@ function FarmService.decorate(player: Player)
 	model.Parent = plotModel
 end
 
+function FarmService.plotFor(player: Player)
+	return plotOf[player]
+end
+
 function FarmService.releasePlot(player: Player)
 	local plot = plotOf[player]
 	if plot then

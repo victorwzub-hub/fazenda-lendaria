@@ -1,5 +1,5 @@
 -- Treino na esteira: quem está em cima da lona corre sozinho (animação no cliente) e ganha
--- Balance.TRAIN_GAIN pontos por segundo; cada TRAIN_PER_SPEED pontos = +1 de velocidade.
+-- Balance.trainGain pontos por segundo; cada nível custa um pouco mais (Balance.trainProgress).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 

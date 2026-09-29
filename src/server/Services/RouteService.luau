@@ -14,6 +14,7 @@ local Style = require(Shared.Style)
 
 local Basket = require(script.Parent.Basket)
 local DataService = require(script.Parent.DataService)
+local EggService = require(script.Parent.EggService)
 local FarmService = require(script.Parent.FarmService)
 local GuardianService = require(script.Parent.GuardianService)
 local Notify = require(script.Parent.Notify)
@@ -252,16 +253,8 @@ local function collect(player: Player, route, def, luckMult: number?): boolean
 		local rarity = Balance.rollRarity(luck, rng)
 		local shiny = Balance.rollShiny(luck, rng)
 		profile.stats.nests += 1
-		local animal, soldFor = FarmService.addAnimal(player, route.species, rarity, shiny)
-		local shown = animal or { id = "", species = route.species, rarity = rarity, shiny = shiny }
-		Notify.reveal(player, {
-			title = "🥚 NINHO ABERTO!",
-			name = Balance.animalName(shown),
-			color = Rarities.list[rarity].color,
-			sub = if soldFor
-				then "Fazenda cheia! Vendido por 💰 " .. Format.number(soldFor) .. " — aumente a fazenda na 🛒 Loja"
-				else "Foi para a sua fazenda: +💰 " .. Format.rate(Balance.animalProduction(shown)) .. "/s",
-		})
+		-- O ninho dá um ovo; ele choca na Chocadeira da fazenda (EggService).
+		EggService.give(player, route.species, rarity, shiny, "🥚 NINHO ABERTO!")
 		return true
 	end
 
@@ -362,7 +355,8 @@ end
 local function nestSign(root: BasePart, tier, requirement: number?)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Placa"
-	gui.Size = UDim2.fromOffset(220, 70)
+	-- Tamanho em studs: encolhe com a distância e as 3 placas não se sobrepõem.
+	gui.Size = UDim2.fromScale(10, 3.2)
 	gui.StudsOffset = Vector3.new(0, 6, 0)
 	gui.MaxDistance = 260
 	gui.LightInfluence = 0

@@ -23,7 +23,8 @@ local Missions = {}
 Missions.list = {
 	{ text = "Colete 10 itens na rota", kind = "stat", stat = "collected", goal = 10, reward = 40, hint = "rota" },
 	{ text = "Leve a cesta para casa", kind = "stat", stat = "deposited", goal = 1, reward = 40, hint = "casa" },
-	{ text = "Abra 1 ninho", kind = "stat", stat = "nests", goal = 1, reward = 60, hint = "rota" },
+	{ text = "Abra 1 ninho no 🥚 Ninhal", kind = "stat", stat = "nests", goal = 1, reward = 60, hint = "rota" },
+	{ text = "🐣 Choque seu ovo na Chocadeira", kind = "stat", stat = "hatched", goal = 1, reward = 60, hint = "ovo" },
 	{ text = "Evolua um animal", kind = "stat", stat = "evolved", goal = 1, reward = 80, hint = "animais" },
 	{ text = "Treine na esteira até ⚡20", kind = "speed", goal = 20, reward = 100, hint = "esteira" },
 	{ text = "Compre as 👢 Botas Rápidas", kind = "upgrade", id = "Velocidade", goal = 1, reward = 120, hint = "loja" },

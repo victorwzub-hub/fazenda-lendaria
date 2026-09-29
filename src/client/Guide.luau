@@ -140,6 +140,23 @@ local function myTreadmill(): Vector3?
 	return nil
 end
 
+local function myIncubator(): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local lotes = world and world:FindFirstChild("Lotes")
+	if not lotes then
+		return nil
+	end
+	for _, lote in lotes:GetChildren() do
+		for _, label in lote:GetDescendants() do
+			if label:IsA("TextLabel") and label.Name == "Dono" and string.find(label.Text, player.DisplayName, 1, true) then
+				local incubator = lote:FindFirstChild("Chocadeira")
+				return if incubator then (incubator :: Model):GetPivot().Position else nil
+			end
+		end
+	end
+	return nil
+end
+
 local function treasurePosition(routeId: string): Vector3?
 	local world = Workspace:FindFirstChild("Mundo")
 	local zones = world and world:FindFirstChild("Rotas")
@@ -218,12 +235,17 @@ function Guide.update()
 		text, place = "⚔️ Bata no " .. bossName .. " com 👊 (F)!", bossPosition(bossRoute)
 	elseif bossRoute and not zone and profile.routes[bossRoute] then
 		text, place = "⚔️ Chefão! Entre no portal e ajude!", portalPosition(bossRoute)
+	elseif not zone and not chaser and (player:GetAttribute("OvosProntos") or 0) > 0 then
+		text, place = "🐣 Seu ovo está pronto! Choque na Chocadeira", myIncubator()
+	elseif not zone and hint == "ovo" and (player:GetAttribute("OvosEsperando") or 0) > 0 then
+		text, place = "🐣 O ovo está chocando… treine na esteira enquanto espera!", myIncubator()
 	elseif player:GetAttribute("NaEsteira") then
 		local points = player:GetAttribute("Treino") or 0
 		if points >= (player:GetAttribute("TreinoMax") or math.huge) then
 			text = "🏃 Treino completo! Velocidade máxima"
 		else
-			text = "🏃 Treinando! " .. (points % Balance.TRAIN_PER_SPEED) .. "/" .. Balance.TRAIN_PER_SPEED .. " para +1 velocidade"
+			local _, within, cost = Balance.trainProgress(points)
+			text = "🏃 Treinando! " .. within .. "/" .. cost .. " para +1 velocidade"
 		end
 	elseif chaser then
 		text = "🏃 Fuja para a zona segura ou 👊 bata (F)!"
