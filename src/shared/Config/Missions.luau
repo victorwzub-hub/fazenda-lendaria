@@ -34,14 +34,18 @@ Missions.list = {
 	{ text = "Libere a Rota do Chiqueiro", kind = "route", id = "Chiqueiro", goal = 1, reward = 300, hint = "rotas" },
 	{ text = "👊 Derrube o Porco Bravo e pegue o 🥓 Bacon", kind = "stat", stat = "ko_Chiqueiro", goal = 1, reward = 350, hint = "rota" },
 	{ text = "Compre as 🦘 Botas de Pulo", kind = "upgrade", id = "Pulo", goal = 1, reward = 350, hint = "loja" },
-	{ text = "Abra o 💎 Baú do Tesouro", kind = "stat", stat = "chests", goal = 1, reward = 500, hint = "tesouro" },
+	{ text = "💎 Suba na árvore e abra o Baú do Tesouro", kind = "stat", stat = "chests", goal = 1, reward = 500, hint = "tesouro" },
+	{ text = "💎 Abra o Baú do Tesouro do Chiqueiro", kind = "stat", stat = "chest_Chiqueiro", goal = 1, reward = 600, hint = "tesouro" },
 	{ text = "Compre a 🏃 Esteira Turbo", kind = "upgrade", id = "Esteira", goal = 1, reward = 400, hint = "loja" },
 	{ text = "Evolua 5 vezes", kind = "stat", stat = "evolved", goal = 5, reward = 800, hint = "animais" },
 	{ text = "Treine até ⚡35", kind = "speed", goal = 35, reward = 900, hint = "esteira" },
 	{ text = "Libere a Rota do Pasto", kind = "route", id = "Pasto", goal = 1, reward = 1500, hint = "rotas" },
+	{ text = "💎 Abra o Baú do Tesouro do Pasto", kind = "stat", stat = "chest_Pasto", goal = 1, reward = 1800, hint = "tesouro" },
 	{ text = "Abra 10 ninhos", kind = "stat", stat = "nests", goal = 10, reward = 2000, hint = "rota" },
 	{ text = "Consiga um animal Lendário", kind = "stat", stat = "legendaries", goal = 1, reward = 5000, hint = "animais" },
 	{ text = "Libere a Rota da Pradaria", kind = "route", id = "Pradaria", goal = 1, reward = 8000, hint = "rotas" },
+	{ text = "💎 Abra o Baú do Tesouro da Pradaria", kind = "stat", stat = "chest_Pradaria", goal = 1, reward = 10000, hint = "tesouro" },
+	{ text = "💎 Abra 10 Baús do Tesouro", kind = "stat", stat = "chests", goal = 10, reward = 15000, hint = "tesouro" },
 } :: { Mission }
 
 -- Depois da lista: missões infinitas de coleta, cada vez maiores.

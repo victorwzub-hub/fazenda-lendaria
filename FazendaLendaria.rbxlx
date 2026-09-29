@@ -2,7 +2,9 @@
 <Meta name="ExplicitAutoJoints">true</Meta>
 <External>null</External>
 <External>nil</External>
-<Item class="ReplicatedStorage" referent="RBX00000010"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX0000000F"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX00000000"><Properties><string name="Name">AnimalModel</string><ProtectedString name="Source"><![CDATA[local Config = script.Parent.Config
+<Item class="ReplicatedStorage" referent="RBX00000010"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX0000000F"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX00000000"><Properties><string name="Name">AnimalModel</string><ProtectedString name="Source"><![CDATA[local CollectionService = game:GetService("CollectionService")
+
+local Config = script.Parent.Config
 local Rarities = require(Config.Rarities)
 local Species = require(Config.Species)
 local Style = require(script.Parent.Style)
@@ -12,6 +14,14 @@ local AnimalModel = {}
 local SPARKLE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
 local EYE = Color3.fromRGB(20, 20, 20)
 local SHINY_TINT = Color3.fromRGB(255, 225, 120)
+local FIRE_TEXTURE = "rbxasset://textures/particles/fire_main.dds"
+
+-- Quanto cada raridade puxa a cor das partes para a cor da raridade (índice = raridade).
+-- Detalhes (asas, manchas, crina) mudam bastante; o corpo muda pouco para o bicho continuar reconhecível.
+local ACCENT_TINT = { 0, 0.55, 0.65, 0.75, 0.85, 0.9 }
+local BODY_TINT = { 0, 0.1, 0.18, 0.32, 0.5, 0.3 }
+-- Parte com esta tag muda de cor em arco-íris no cliente (ver client/Rainbow).
+AnimalModel.RAINBOW_TAG = "Arcoiris"
 
 type PartSpec = {
 	size: Vector3,
@@ -243,6 +253,47 @@ local function addSparkles(parent: BasePart, color: Color3, rate: number, spread
 	emitter.Parent = parent
 end
 
+-- Anel brilhante no chão com a cor da raridade (a partir de Incomum).
+local function addRing(model: Model, root: BasePart, scale: number, rarity: number, color: Color3): BasePart
+	local diameter = (3.4 + rarity * 0.5) * scale
+	local ring = Instance.new("Part")
+	ring.Name = "Anel"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.15, diameter, diameter)
+	ring.Color = color
+	ring.Material = Enum.Material.Neon
+	ring.Transparency = 0.45
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.CanTouch = false
+	ring.Massless = true
+	ring.CastShadow = false
+	ring.CFrame = root.CFrame * CFrame.new(0, 0.1, 0) * CFrame.Angles(0, 0, math.rad(90))
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = root
+	weld.Part1 = ring
+	weld.Parent = ring
+	ring.Parent = model
+	return ring
+end
+
+-- Faíscas de fogo subindo (Lendário e Mítico).
+local function addFlames(parent: BasePart, color: Color3, scale: number)
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = "Chamas"
+	emitter.Texture = FIRE_TEXTURE
+	emitter.Color = ColorSequence.new(color, Color3.fromRGB(255, 120, 40))
+	emitter.LightEmission = 0.9
+	emitter.Rate = 10
+	emitter.Lifetime = NumberRange.new(0.6, 1)
+	emitter.Speed = NumberRange.new(2, 4)
+	emitter.SpreadAngle = Vector2.new(25, 25)
+	emitter.EmissionDirection = Enum.NormalId.Top
+	emitter.Size = NumberSequence.new(0.9 * scale, 0)
+	emitter.Transparency = NumberSequence.new(0.3, 1)
+	emitter.Parent = parent
+end
+
 local function addNameTag(root: BasePart, height: number, text: string, color: Color3)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Tag"
@@ -264,11 +315,15 @@ end
 
 -- Monta o modelo com o pivô no chão; o Root é ancorado e as demais peças são soldadas nele,
 -- então mover o Root (CFrame/tween) move o animal inteiro.
-function AnimalModel.build(speciesId: string, rarity: number, shiny: boolean, displayName: string): Model
+-- plain = true: sem enfeites de raridade (usado pelos guardiões, que são bichos "selvagens").
+function AnimalModel.build(speciesId: string, rarity: number, shiny: boolean, displayName: string, plain: boolean?): Model
 	local species = Species.byId[speciesId]
 	local shape = SHAPES[species.shape]
 	local rarityInfo = Rarities.list[rarity]
-	local scale = 1 + 0.07 * (rarity - 1)
+	local fancy = not plain
+	-- Cada raridade fica bem maior: Mítico = 1,6x o Comum.
+	local scale = if fancy then 1 + 0.12 * (rarity - 1) else 1 + 0.07 * (rarity - 1)
+	local mythic = fancy and rarity >= Rarities.MAX
 
 	local model = Instance.new("Model")
 	model.Name = displayName
@@ -292,10 +347,36 @@ function AnimalModel.build(speciesId: string, rarity: number, shiny: boolean, di
 		if shiny and spec.color == "body" then
 			color = color:Lerp(SHINY_TINT, 0.55)
 		end
-		addPart(model, root, spec, scale, color, shiny and spec.color == "body")
+		local isAccent = spec.color == "accent"
+		if fancy and spec.color == "body" then
+			color = color:Lerp(rarityInfo.color, BODY_TINT[rarity] or 0)
+		elseif fancy and isAccent then
+			color = color:Lerp(rarityInfo.color, ACCENT_TINT[rarity] or 0)
+		end
+		local part = addPart(model, root, spec, scale, color, shiny and spec.color == "body")
+		-- Lendário: detalhes brilhando. Mítico: detalhes em arco-íris.
+		if fancy and isAccent and rarity >= Rarities.LEGENDARY then
+			part.Material = Enum.Material.Neon
+		end
+		if mythic and (isAccent or spec.color == "body") then
+			CollectionService:AddTag(part, AnimalModel.RAINBOW_TAG)
+		end
 	end
 
-	if rarity >= 4 then
+	if fancy and rarity >= 2 then
+		local ring = addRing(model, root, scale, rarity, rarityInfo.color)
+		if mythic then
+			CollectionService:AddTag(ring, AnimalModel.RAINBOW_TAG)
+		end
+	end
+	if fancy and rarity == 3 then
+		addSparkles(root, rarityInfo.color, 1.5, scale * 0.8)
+	end
+	if fancy and rarity >= Rarities.LEGENDARY then
+		addFlames(root, rarityInfo.color, scale)
+	end
+
+	if fancy and rarity >= 4 then
 		local light = Instance.new("PointLight")
 		light.Color = rarityInfo.color
 		light.Range = 8 + rarity
@@ -303,7 +384,7 @@ function AnimalModel.build(speciesId: string, rarity: number, shiny: boolean, di
 		light.Parent = root
 		addSparkles(root, rarityInfo.color, 2 + (rarity - 4) * 3, scale)
 	end
-	if rarity >= Rarities.LEGENDARY then
+	if fancy and rarity >= Rarities.LEGENDARY then
 		addCrown(model, root, shape.crown, scale, rarityInfo.color)
 	end
 	if shiny then
@@ -659,14 +740,18 @@ Missions.list = {
 	{ text = "Libere a Rota do Chiqueiro", kind = "route", id = "Chiqueiro", goal = 1, reward = 300, hint = "rotas" },
 	{ text = "👊 Derrube o Porco Bravo e pegue o 🥓 Bacon", kind = "stat", stat = "ko_Chiqueiro", goal = 1, reward = 350, hint = "rota" },
 	{ text = "Compre as 🦘 Botas de Pulo", kind = "upgrade", id = "Pulo", goal = 1, reward = 350, hint = "loja" },
-	{ text = "Abra o 💎 Baú do Tesouro", kind = "stat", stat = "chests", goal = 1, reward = 500, hint = "tesouro" },
+	{ text = "💎 Suba na árvore e abra o Baú do Tesouro", kind = "stat", stat = "chests", goal = 1, reward = 500, hint = "tesouro" },
+	{ text = "💎 Abra o Baú do Tesouro do Chiqueiro", kind = "stat", stat = "chest_Chiqueiro", goal = 1, reward = 600, hint = "tesouro" },
 	{ text = "Compre a 🏃 Esteira Turbo", kind = "upgrade", id = "Esteira", goal = 1, reward = 400, hint = "loja" },
 	{ text = "Evolua 5 vezes", kind = "stat", stat = "evolved", goal = 5, reward = 800, hint = "animais" },
 	{ text = "Treine até ⚡35", kind = "speed", goal = 35, reward = 900, hint = "esteira" },
 	{ text = "Libere a Rota do Pasto", kind = "route", id = "Pasto", goal = 1, reward = 1500, hint = "rotas" },
+	{ text = "💎 Abra o Baú do Tesouro do Pasto", kind = "stat", stat = "chest_Pasto", goal = 1, reward = 1800, hint = "tesouro" },
 	{ text = "Abra 10 ninhos", kind = "stat", stat = "nests", goal = 10, reward = 2000, hint = "rota" },
 	{ text = "Consiga um animal Lendário", kind = "stat", stat = "legendaries", goal = 1, reward = 5000, hint = "animais" },
 	{ text = "Libere a Rota da Pradaria", kind = "route", id = "Pradaria", goal = 1, reward = 8000, hint = "rotas" },
+	{ text = "💎 Abra o Baú do Tesouro da Pradaria", kind = "stat", stat = "chest_Pradaria", goal = 1, reward = 10000, hint = "tesouro" },
+	{ text = "💎 Abra 10 Baús do Tesouro", kind = "stat", stat = "chests", goal = 10, reward = 15000, hint = "tesouro" },
 } :: { Mission }
 
 -- Depois da lista: missões infinitas de coleta, cada vez maiores.
@@ -2896,7 +2981,7 @@ function GuardianService.init(zones)
 			folder.Name = "Guardioes"
 			folder.Parent = zone.nodes.Parent
 			for i = 1, PER_ZONE do
-				local model = AnimalModel.build(def.species, def.rarity, false, def.name)
+				local model = AnimalModel.build(def.species, def.rarity, false, def.name, true)
 				model:ScaleTo(MODEL_SCALE)
 				local root = model.PrimaryPart :: BasePart
 				local tag = root:FindFirstChild("Tag")
@@ -4707,6 +4792,7 @@ local function open(player: Player, routeId: string, index: number)
 	end
 	mine[routeId] = os.clock()
 	profile.stats.chests = (profile.stats.chests or 0) + 1
+	profile.stats["chest_" .. routeId] = (profile.stats["chest_" .. routeId] or 0) + 1
 
 	local route = Routes.byId[routeId]
 	local parts = {}
@@ -4750,7 +4836,7 @@ end
 
 return TreasureService
 ]]></ProtectedString></Properties></Item></Item></Item></Item>
-<Item class="StarterPlayer" referent="RBX0000003B"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX0000003A"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000039"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+<Item class="StarterPlayer" referent="RBX0000003C"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX0000003B"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX0000003A"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -4764,6 +4850,7 @@ local DoubleJump = require(script.DoubleJump)
 local Sfx = require(script.Sfx)
 local Treadmill = require(script.Treadmill)
 local Punch = require(script.Punch)
+local Rainbow = require(script.Rainbow)
 local Welcome = require(script.UI.Welcome)
 local MissionPanel = require(script.UI.MissionPanel)
 local TrainingPanel = require(script.UI.TrainingPanel)
@@ -4944,6 +5031,7 @@ DoubleJump.start()
 Sfx.start()
 Treadmill.start()
 Punch.start()
+Rainbow.start()
 
 -- Galo cantando quando o Galo Bravo começa a correr atrás de você.
 player:GetAttributeChangedSignal("Perseguido"):Connect(function()
@@ -5548,7 +5636,32 @@ function Punch.pow(at: Vector3)
 end
 
 return Punch
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000027"><Properties><string name="Name">Sfx</string><ProtectedString name="Source"><![CDATA[-- Toca os efeitos sonoros só para este jogador (SoundService:PlayLocalSound).
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000027"><Properties><string name="Name">Rainbow</string><ProtectedString name="Source"><![CDATA[-- Peças marcadas com a tag de arco-íris (animais Míticos) trocam de cor sem parar.
+-- Roda no cliente para não mandar mudança de cor pela rede a cada quadro.
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local AnimalModel = require(ReplicatedStorage:WaitForChild("Shared").AnimalModel)
+
+local Rainbow = {}
+
+local SPEED = 0.25 -- voltas no círculo de cores por segundo
+
+function Rainbow.start()
+	RunService.RenderStepped:Connect(function()
+		local base = os.clock() * SPEED
+		for index, part in CollectionService:GetTagged(AnimalModel.RAINBOW_TAG) do
+			if part:IsA("BasePart") then
+				-- Cada peça um pouco defasada: o arco-íris "corre" pelo corpo.
+				part.Color = Color3.fromHSV((base + index * 0.07) % 1, 0.75, 1)
+			end
+		end
+	end)
+end
+
+return Rainbow
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000028"><Properties><string name="Name">Sfx</string><ProtectedString name="Source"><![CDATA[-- Toca os efeitos sonoros só para este jogador (SoundService:PlayLocalSound).
 local ContentProvider = game:GetService("ContentProvider")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
@@ -5586,7 +5699,7 @@ function Sfx.start()
 end
 
 return Sfx
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000028"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000029"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -5682,7 +5795,7 @@ function State.start()
 end
 
 return State
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000029"><Properties><string name="Name">Treadmill</string><ProtectedString name="Source"><![CDATA[-- Visual da esteira no cliente: setas da lona correndo, boneco correndo sozinho,
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002A"><Properties><string name="Name">Treadmill</string><ProtectedString name="Source"><![CDATA[-- Visual da esteira no cliente: setas da lona correndo, boneco correndo sozinho,
 -- "+10 ⚡" subindo a cada ganho e aura de fogo enquanto treina.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -5867,7 +5980,7 @@ function Treadmill.start()
 end
 
 return Treadmill
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000037"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX0000002A"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000038"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX0000002B"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
@@ -6231,7 +6344,7 @@ function Hud.tick()
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002B"><Properties><string name="Name">Kit</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002C"><Properties><string name="Name">Kit</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
 
 local Kit = {}
 
@@ -6376,7 +6489,7 @@ function Kit.section(text: string, order: number): TextLabel
 end
 
 return Kit
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002C"><Properties><string name="Name">MissionPanel</string><ProtectedString name="Source"><![CDATA[-- Painel fixo da missão atual (lado direito): número, texto, barra de progresso e prêmio.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002D"><Properties><string name="Name">MissionPanel</string><ProtectedString name="Source"><![CDATA[-- Painel fixo da missão atual (lado direito): número, texto, barra de progresso e prêmio.
 -- Lê os atributos "Missao*" publicados pelo MissionService.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -6499,7 +6612,7 @@ function MissionPanel.tick()
 end
 
 return MissionPanel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002D"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002E"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
 
 local Kit = require(script.Parent.Kit)
 
@@ -6724,7 +6837,7 @@ function Notifications.reveal(payload)
 end
 
 return Notifications
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000033"><Properties><string name="Name">Pages</string></Properties><Item class="ModuleScript" referent="RBX0000002E"><Properties><string name="Name">Animais</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000034"><Properties><string name="Name">Pages</string></Properties><Item class="ModuleScript" referent="RBX0000002F"><Properties><string name="Name">Animais</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
@@ -6903,7 +7016,7 @@ return function(content: Frame, profile, ctx)
 		sellButton(buttons, animal, ctx)
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002F"><Properties><string name="Name">Indice</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000030"><Properties><string name="Name">Indice</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Rarities = require(Shared.Config.Rarities)
@@ -6967,7 +7080,7 @@ return function(content: Frame, profile, _ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000030"><Properties><string name="Name">Loja</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000031"><Properties><string name="Name">Loja</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -7156,7 +7269,7 @@ return function(content: Frame, profile, ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000031"><Properties><string name="Name">Mochila</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000032"><Properties><string name="Name">Mochila</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Format = require(Shared.Format)
@@ -7227,7 +7340,7 @@ return function(content: Frame, profile, _ctx)
 		})
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000032"><Properties><string name="Name">Rotas</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000033"><Properties><string name="Name">Rotas</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
@@ -7324,7 +7437,7 @@ return function(content: Frame, profile, ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000034"><Properties><string name="Name">Panel</string><ProtectedString name="Source"><![CDATA[local Kit = require(script.Parent.Kit)
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000035"><Properties><string name="Name">Panel</string><ProtectedString name="Source"><![CDATA[local Kit = require(script.Parent.Kit)
 
 export type Context = {
 	act: (action: string, arg: string?) -> (boolean, any),
@@ -7446,7 +7559,7 @@ function Panel:refreshCosts(coins: number)
 end
 
 return Panel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000035"><Properties><string name="Name">TrainingPanel</string><ProtectedString name="Source"><![CDATA[-- Painel que aparece embaixo enquanto o jogador está na esteira: quanto ganha por segundo,
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000036"><Properties><string name="Name">TrainingPanel</string><ProtectedString name="Source"><![CDATA[-- Painel que aparece embaixo enquanto o jogador está na esteira: quanto ganha por segundo,
 -- barra até o próximo +1 e "⚡ 18 → 19", com o próximo guardião a ultrapassar.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -7537,7 +7650,7 @@ function TrainingPanel.tick()
 end
 
 return TrainingPanel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000036"><Properties><string name="Name">Welcome</string><ProtectedString name="Source"><![CDATA[-- Janela "Bem-vindo de volta!" com os ganhos offline (as moedas já entraram no servidor;
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000037"><Properties><string name="Name">Welcome</string><ProtectedString name="Source"><![CDATA[-- Janela "Bem-vindo de volta!" com os ganhos offline (as moedas já entraram no servidor;
 -- o botão só fecha a janela com festa).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -7657,7 +7770,7 @@ function Welcome.show(gui: ScreenGui, scales: { UIScale }, amount: number, secon
 end
 
 return Welcome
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000038"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000039"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -7726,5 +7839,5 @@ end
 
 return World
 ]]></ProtectedString></Properties></Item></Item></Item></Item>
-<Item class="Lighting" referent="RBX0000003C"><Properties><string name="Name">Lighting</string><token name="Technology">4</token></Properties></Item>
+<Item class="Lighting" referent="RBX0000003D"><Properties><string name="Name">Lighting</string><token name="Technology">4</token></Properties></Item>
 </roblox>

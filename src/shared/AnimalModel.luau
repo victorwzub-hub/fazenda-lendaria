@@ -1,3 +1,5 @@
+local CollectionService = game:GetService("CollectionService")
+
 local Config = script.Parent.Config
 local Rarities = require(Config.Rarities)
 local Species = require(Config.Species)
@@ -8,6 +10,14 @@ local AnimalModel = {}
 local SPARKLE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
 local EYE = Color3.fromRGB(20, 20, 20)
 local SHINY_TINT = Color3.fromRGB(255, 225, 120)
+local FIRE_TEXTURE = "rbxasset://textures/particles/fire_main.dds"
+
+-- Quanto cada raridade puxa a cor das partes para a cor da raridade (índice = raridade).
+-- Detalhes (asas, manchas, crina) mudam bastante; o corpo muda pouco para o bicho continuar reconhecível.
+local ACCENT_TINT = { 0, 0.55, 0.65, 0.75, 0.85, 0.9 }
+local BODY_TINT = { 0, 0.1, 0.18, 0.32, 0.5, 0.3 }
+-- Parte com esta tag muda de cor em arco-íris no cliente (ver client/Rainbow).
+AnimalModel.RAINBOW_TAG = "Arcoiris"
 
 type PartSpec = {
 	size: Vector3,
@@ -239,6 +249,47 @@ local function addSparkles(parent: BasePart, color: Color3, rate: number, spread
 	emitter.Parent = parent
 end
 
+-- Anel brilhante no chão com a cor da raridade (a partir de Incomum).
+local function addRing(model: Model, root: BasePart, scale: number, rarity: number, color: Color3): BasePart
+	local diameter = (3.4 + rarity * 0.5) * scale
+	local ring = Instance.new("Part")
+	ring.Name = "Anel"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.15, diameter, diameter)
+	ring.Color = color
+	ring.Material = Enum.Material.Neon
+	ring.Transparency = 0.45
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.CanTouch = false
+	ring.Massless = true
+	ring.CastShadow = false
+	ring.CFrame = root.CFrame * CFrame.new(0, 0.1, 0) * CFrame.Angles(0, 0, math.rad(90))
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = root
+	weld.Part1 = ring
+	weld.Parent = ring
+	ring.Parent = model
+	return ring
+end
+
+-- Faíscas de fogo subindo (Lendário e Mítico).
+local function addFlames(parent: BasePart, color: Color3, scale: number)
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = "Chamas"
+	emitter.Texture = FIRE_TEXTURE
+	emitter.Color = ColorSequence.new(color, Color3.fromRGB(255, 120, 40))
+	emitter.LightEmission = 0.9
+	emitter.Rate = 10
+	emitter.Lifetime = NumberRange.new(0.6, 1)
+	emitter.Speed = NumberRange.new(2, 4)
+	emitter.SpreadAngle = Vector2.new(25, 25)
+	emitter.EmissionDirection = Enum.NormalId.Top
+	emitter.Size = NumberSequence.new(0.9 * scale, 0)
+	emitter.Transparency = NumberSequence.new(0.3, 1)
+	emitter.Parent = parent
+end
+
 local function addNameTag(root: BasePart, height: number, text: string, color: Color3)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Tag"
@@ -260,11 +311,15 @@ end
 
 -- Monta o modelo com o pivô no chão; o Root é ancorado e as demais peças são soldadas nele,
 -- então mover o Root (CFrame/tween) move o animal inteiro.
-function AnimalModel.build(speciesId: string, rarity: number, shiny: boolean, displayName: string): Model
+-- plain = true: sem enfeites de raridade (usado pelos guardiões, que são bichos "selvagens").
+function AnimalModel.build(speciesId: string, rarity: number, shiny: boolean, displayName: string, plain: boolean?): Model
 	local species = Species.byId[speciesId]
 	local shape = SHAPES[species.shape]
 	local rarityInfo = Rarities.list[rarity]
-	local scale = 1 + 0.07 * (rarity - 1)
+	local fancy = not plain
+	-- Cada raridade fica bem maior: Mítico = 1,6x o Comum.
+	local scale = if fancy then 1 + 0.12 * (rarity - 1) else 1 + 0.07 * (rarity - 1)
+	local mythic = fancy and rarity >= Rarities.MAX
 
 	local model = Instance.new("Model")
 	model.Name = displayName
@@ -288,10 +343,36 @@ function AnimalModel.build(speciesId: string, rarity: number, shiny: boolean, di
 		if shiny and spec.color == "body" then
 			color = color:Lerp(SHINY_TINT, 0.55)
 		end
-		addPart(model, root, spec, scale, color, shiny and spec.color == "body")
+		local isAccent = spec.color == "accent"
+		if fancy and spec.color == "body" then
+			color = color:Lerp(rarityInfo.color, BODY_TINT[rarity] or 0)
+		elseif fancy and isAccent then
+			color = color:Lerp(rarityInfo.color, ACCENT_TINT[rarity] or 0)
+		end
+		local part = addPart(model, root, spec, scale, color, shiny and spec.color == "body")
+		-- Lendário: detalhes brilhando. Mítico: detalhes em arco-íris.
+		if fancy and isAccent and rarity >= Rarities.LEGENDARY then
+			part.Material = Enum.Material.Neon
+		end
+		if mythic and (isAccent or spec.color == "body") then
+			CollectionService:AddTag(part, AnimalModel.RAINBOW_TAG)
+		end
 	end
 
-	if rarity >= 4 then
+	if fancy and rarity >= 2 then
+		local ring = addRing(model, root, scale, rarity, rarityInfo.color)
+		if mythic then
+			CollectionService:AddTag(ring, AnimalModel.RAINBOW_TAG)
+		end
+	end
+	if fancy and rarity == 3 then
+		addSparkles(root, rarityInfo.color, 1.5, scale * 0.8)
+	end
+	if fancy and rarity >= Rarities.LEGENDARY then
+		addFlames(root, rarityInfo.color, scale)
+	end
+
+	if fancy and rarity >= 4 then
 		local light = Instance.new("PointLight")
 		light.Color = rarityInfo.color
 		light.Range = 8 + rarity
@@ -299,7 +380,7 @@ function AnimalModel.build(speciesId: string, rarity: number, shiny: boolean, di
 		light.Parent = root
 		addSparkles(root, rarityInfo.color, 2 + (rarity - 4) * 3, scale)
 	end
-	if rarity >= Rarities.LEGENDARY then
+	if fancy and rarity >= Rarities.LEGENDARY then
 		addCrown(model, root, shape.crown, scale, rarityInfo.color)
 	end
 	if shiny then

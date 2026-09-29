@@ -47,6 +47,7 @@ local function open(player: Player, routeId: string, index: number)
 	end
 	mine[routeId] = os.clock()
 	profile.stats.chests = (profile.stats.chests or 0) + 1
+	profile.stats["chest_" .. routeId] = (profile.stats["chest_" .. routeId] or 0) + 1
 
 	local route = Routes.byId[routeId]
 	local parts = {}

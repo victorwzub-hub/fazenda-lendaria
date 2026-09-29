@@ -464,7 +464,7 @@ function GuardianService.init(zones)
 			folder.Name = "Guardioes"
 			folder.Parent = zone.nodes.Parent
 			for i = 1, PER_ZONE do
-				local model = AnimalModel.build(def.species, def.rarity, false, def.name)
+				local model = AnimalModel.build(def.species, def.rarity, false, def.name, true)
 				model:ScaleTo(MODEL_SCALE)
 				local root = model.PrimaryPart :: BasePart
 				local tag = root:FindFirstChild("Tag")
