@@ -69,7 +69,7 @@ function RebirthService.rebirth(player: Player): (boolean, string?)
 		PURPLE,
 		"revelar"
 	)
-	return true, nil
+	return true, "♻️ Renascimento confirmado! Seu bônus permanente já está ativo."
 end
 
 return RebirthService

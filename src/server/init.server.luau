@@ -25,6 +25,9 @@ local StampedeService = require(Services.StampedeService)
 local TrainingService = require(Services.TrainingService)
 local TreasureService = require(Services.TreasureService)
 local UpgradeService = require(Services.UpgradeService)
+local Teleport = require(Services.Teleport)
+
+Teleport.beforeTeleport = RaceService.cancel
 
 local map = MapBuilder.build()
 DataService.init()
@@ -67,6 +70,7 @@ if RunService:IsStudio() then
 	-- Invoke("perfil") devolve o perfil do primeiro jogador.
 	local api = {
 		Data = DataService,
+		Daily = DailyService,
 		Farm = FarmService,
 		Egg = EggService,
 		Pet = PetService,

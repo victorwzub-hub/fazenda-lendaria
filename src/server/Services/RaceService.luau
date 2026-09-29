@@ -33,7 +33,7 @@ local EGG_LUCK = 3
 local HIP_RAISE = 2.8
 local GOLD = Color3.fromRGB(255, 205, 60)
 
-type Race = { target: number, ends: number, started: number, horse: Model, hip: number }
+type Race = { target: number, ends: number, started: number, horse: Model, hip: number, humanoid: Humanoid }
 
 local zone
 local rings: { Vector3 } = {}
@@ -118,9 +118,8 @@ local function dismount(player: Player, message: string?, color: Color3?)
 	if race.horse then
 		race.horse:Destroy()
 	end
-	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		humanoid.HipHeight = race.hip
+	if race.humanoid.Parent then
+		race.humanoid.HipHeight = race.hip
 	end
 	player:SetAttribute("CorridaVelocidade", nil)
 	player:SetAttribute("CorridaAlvo", nil)
@@ -132,12 +131,12 @@ local function dismount(player: Player, message: string?, color: Color3?)
 end
 
 -- Cavalo soldado embaixo do jogador; o jogador sobe (HipHeight) e fica montado.
-local function mount(player: Player): (Model?, number)
+local function mount(player: Player): (Model?, number, Humanoid?)
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not root or not humanoid then
-		return nil, 0
+		return nil, 0, nil
 	end
 	local hip = humanoid.HipHeight
 	humanoid.HipHeight = hip + HIP_RAISE
@@ -165,7 +164,7 @@ local function mount(player: Player): (Model?, number)
 	weld.Parent = horseRoot
 	horse.Name = "Montaria"
 	horse.Parent = character
-	return horse, hip
+	return horse, hip, humanoid
 end
 
 local function start(player: Player)
@@ -187,11 +186,11 @@ local function start(player: Player)
 		Notify.toast(player, "🐴 O cavalo está descansando… " .. math.ceil(wait) .. "s", GOLD)
 		return
 	end
-	local horse, hip = mount(player)
-	if not horse then
+	local horse, hip, humanoid = mount(player)
+	if not horse or not humanoid then
 		return
 	end
-	racing[player] = { target = 1, ends = os.clock() + RACE_SECONDS, started = os.clock(), horse = horse, hip = hip }
+	racing[player] = { target = 1, ends = os.clock() + RACE_SECONDS, started = os.clock(), horse = horse, hip = hip, humanoid = humanoid }
 	player:SetAttribute("CorridaVelocidade", HORSE_SPEED)
 	player:SetAttribute("CorridaAlvo", 1)
 	player:SetAttribute("CorridaFim", Workspace:GetServerTimeNow() + RACE_SECONDS)
@@ -295,11 +294,10 @@ end
 -- Morreu/resetou montado: termina a corrida.
 function RaceService.onCharacter(player: Player)
 	if racing[player] then
-		racing[player] = nil
-		player:SetAttribute("CorridaVelocidade", nil)
-		player:SetAttribute("CorridaAlvo", nil)
-		player:SetAttribute("CorridaFim", nil)
+		dismount(player)
 	end
 end
+
+RaceService.cancel = dismount
 
 return RaceService
