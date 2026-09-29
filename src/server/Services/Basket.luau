@@ -100,7 +100,13 @@ function Basket.deposit(player: Player, silent: boolean?): number
 	sync(player)
 	DataService.push(player)
 	if not silent then
-		Notify.toast(player, "🧺 Guardou " .. amount .. " itens na fazenda!", Color3.fromRGB(95, 235, 70), "guardar")
+		Notify.big(
+			player,
+			"🧺 +" .. amount .. " itens guardados!",
+			"Use os itens para EVOLUIR seus animais no botão 🐔 Animais",
+			Color3.fromRGB(95, 235, 70),
+			"guardar"
+		)
 	end
 	return amount
 end

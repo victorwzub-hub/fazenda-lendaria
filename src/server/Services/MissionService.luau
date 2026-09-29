@@ -50,6 +50,7 @@ local function publish(player: Player, profile)
 	player:SetAttribute("MissaoMeta", goal)
 	player:SetAttribute("MissaoPremio", mission.reward)
 	player:SetAttribute("MissaoDica", mission.hint or "")
+	player:SetAttribute("MissaoStat", if mission.kind == "stat" then mission.stat else nil)
 	player:SetAttribute("MissaoUpgrade", if mission.kind == "upgrade" then mission.id else nil)
 end
 

@@ -757,7 +757,8 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 					0,
 					rng:NextNumber(-half + margin, half - margin)
 				)
-			if (point - Vector3.new(spawnPosition.X, 0, spawnPosition.Z)).Magnitude > 34 then
+			local clearOfNinhal = (point - origin).Magnitude > 28
+			if (point - Vector3.new(spawnPosition.X, 0, spawnPosition.Z)).Magnitude > 34 and clearOfNinhal then
 				return point
 			end
 		end
@@ -821,6 +822,14 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 	)
 
 	local treasure = treasureTree(model, origin + Vector3.new(half - 34, 0, -half + 34), route)
+
+	-- Ninhal: plataforma de palha no meio com os 3 ninhos fixos (RouteService coloca os ninhos).
+	local straw = Color3.fromRGB(222, 180, 90)
+	block(model, Vector3.new(0.8, 40, 40), CFrame.new(origin + Vector3.new(0, 0.4, 0)) * CFrame.Angles(0, 0, rad(90)), straw, Enum.Material.Fabric, Enum.PartType.Cylinder)
+	block(model, Vector3.new(0.6, 42, 42), CFrame.new(origin + Vector3.new(0, 0.3, 0)) * CFrame.Angles(0, 0, rad(90)), Style.shade(straw, -0.25), Enum.Material.Fabric, Enum.PartType.Cylinder)
+	local ninhalSign = decor(block(model, Vector3.one, CFrame.new(origin + Vector3.new(0, 16, 0)), straw))
+	ninhalSign.Transparency = 1
+	textLabel(billboard(ninhalSign, UDim2.fromScale(26, 6), Vector3.zero, 500), "Titulo", "🥚 NINHAL", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), Color3.fromRGB(255, 225, 120))
 
 	-- Trilha de pedras saindo da zona segura para o meio da rota.
 	local pathRng = Random.new(index * 31)

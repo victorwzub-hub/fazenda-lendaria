@@ -1494,7 +1494,13 @@ function Basket.deposit(player: Player, silent: boolean?): number
 	sync(player)
 	DataService.push(player)
 	if not silent then
-		Notify.toast(player, "🧺 Guardou " .. amount .. " itens na fazenda!", Color3.fromRGB(95, 235, 70), "guardar")
+		Notify.big(
+			player,
+			"🧺 +" .. amount .. " itens guardados!",
+			"Use os itens para EVOLUIR seus animais no botão 🐔 Animais",
+			Color3.fromRGB(95, 235, 70),
+			"guardar"
+		)
 	end
 	return amount
 end
@@ -3802,7 +3808,8 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 					0,
 					rng:NextNumber(-half + margin, half - margin)
 				)
-			if (point - Vector3.new(spawnPosition.X, 0, spawnPosition.Z)).Magnitude > 34 then
+			local clearOfNinhal = (point - origin).Magnitude > 28
+			if (point - Vector3.new(spawnPosition.X, 0, spawnPosition.Z)).Magnitude > 34 and clearOfNinhal then
 				return point
 			end
 		end
@@ -3866,6 +3873,14 @@ local function buildZone(parent: Instance, routeId: string, index: number): Zone
 	)
 
 	local treasure = treasureTree(model, origin + Vector3.new(half - 34, 0, -half + 34), route)
+
+	-- Ninhal: plataforma de palha no meio com os 3 ninhos fixos (RouteService coloca os ninhos).
+	local straw = Color3.fromRGB(222, 180, 90)
+	block(model, Vector3.new(0.8, 40, 40), CFrame.new(origin + Vector3.new(0, 0.4, 0)) * CFrame.Angles(0, 0, rad(90)), straw, Enum.Material.Fabric, Enum.PartType.Cylinder)
+	block(model, Vector3.new(0.6, 42, 42), CFrame.new(origin + Vector3.new(0, 0.3, 0)) * CFrame.Angles(0, 0, rad(90)), Style.shade(straw, -0.25), Enum.Material.Fabric, Enum.PartType.Cylinder)
+	local ninhalSign = decor(block(model, Vector3.one, CFrame.new(origin + Vector3.new(0, 16, 0)), straw))
+	ninhalSign.Transparency = 1
+	textLabel(billboard(ninhalSign, UDim2.fromScale(26, 6), Vector3.zero, 500), "Titulo", "🥚 NINHAL", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), Color3.fromRGB(255, 225, 120))
 
 	-- Trilha de pedras saindo da zona segura para o meio da rota.
 	local pathRng = Random.new(index * 31)
@@ -4031,6 +4046,7 @@ local function publish(player: Player, profile)
 	player:SetAttribute("MissaoMeta", goal)
 	player:SetAttribute("MissaoPremio", mission.reward)
 	player:SetAttribute("MissaoDica", mission.hint or "")
+	player:SetAttribute("MissaoStat", if mission.kind == "stat" then mission.stat else nil)
 	player:SetAttribute("MissaoUpgrade", if mission.kind == "upgrade" then mission.id else nil)
 end
 
@@ -4194,6 +4210,7 @@ local Materials = require(Shared.Config.Materials)
 local Rarities = require(Shared.Config.Rarities)
 local Routes = require(Shared.Config.Routes)
 local Species = require(Shared.Config.Species)
+local Guardians = require(Shared.Config.Guardians)
 local Style = require(Shared.Style)
 
 local Basket = require(script.Parent.Basket)
@@ -4212,6 +4229,15 @@ local GOLDEN_RARE_BOOST = 3
 local RESPAWN_MIN, RESPAWN_MAX = 6, 14
 local TOUCH_COOLDOWN = 2
 local NEST_HOLD = 1.5
+-- Ninhal no meio de cada rota: 3 ninhos fixos, sempre visíveis. Os melhores pedem velocidade
+-- mínima (velocidade do guardião da rota + extra) e dão muito mais sorte na raridade.
+local NEST_TIERS = {
+	{ name = "Ninho", emoji = "🥚", extra = nil, luck = 1, hold = 1.5, respawn = 12, egg = Color3.fromRGB(255, 248, 230), neon = false },
+	{ name = "Ninho Raro", emoji = "💙", extra = 3, luck = 3, hold = 2, respawn = 25, egg = Color3.fromRGB(90, 160, 255), neon = false },
+	{ name = "Ninho Dourado", emoji = "💛", extra = 9, luck = 8, hold = 2.5, respawn = 50, egg = Color3.fromRGB(255, 205, 50), neon = true },
+}
+local NEST_SPACING = 12
+local NINHAL_CLEAR = 26 -- itens aleatórios não nascem em cima do Ninhal
 local SPARKLES = "rbxasset://textures/particles/sparkles_main.dds"
 local GOLD = Color3.fromRGB(255, 205, 60)
 
@@ -4396,7 +4422,7 @@ local function pickDef(route, golden: boolean)
 	local weights = {}
 	for i, def in route.nodes do
 		local boosted = def.nest or Materials.byId[def.material].tier >= 3
-		weights[i] = def.weight * (if golden and boosted then GOLDEN_RARE_BOOST else 1)
+		weights[i] = if def.nest then 0 else def.weight * (if golden and boosted then GOLDEN_RARE_BOOST else 1)
 	end
 	return route.nodes[Balance.pickWeighted(weights, rng:NextNumber())]
 end
@@ -4408,19 +4434,20 @@ local function randomNodeCFrame(zone): CFrame
 	local point = zone.origin
 	for _ = 1, 30 do
 		point = zone.origin + Vector3.new(rng:NextNumber(-half, half), 0, rng:NextNumber(-half, half))
-		if (point - spawnFlat).Magnitude > 30 and (point - barnFlat).Magnitude > 16 then
+		local clearOfNinhal = (point - zone.origin).Magnitude > NINHAL_CLEAR
+		if (point - spawnFlat).Magnitude > 30 and (point - barnFlat).Magnitude > 16 and clearOfNinhal then
 			break
 		end
 	end
 	return CFrame.new(point) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
 end
 
-local function collect(player: Player, route, def): boolean
+local function collect(player: Player, route, def, luckMult: number?): boolean
 	local profile = DataService.get(player)
 	if not profile or not profile.routes[route.id] then
 		return false
 	end
-	local luck = Balance.luck(profile, PassService.has(player, "SorteDupla"), RouteService.isGoldenHour())
+	local luck = Balance.luck(profile, PassService.has(player, "SorteDupla"), RouteService.isGoldenHour()) * (luckMult or 1)
 
 	if def.nest then
 		local rarity = Balance.rollRarity(luck, rng)
@@ -4528,6 +4555,97 @@ function RouteService.pull(player: Player, position: Vector3, radius: number): n
 	return count
 end
 
+local function nestRequirement(routeId: string, tier): number?
+	local guardian = Guardians.byRoute[routeId]
+	return if tier.extra and guardian then guardian.speed + tier.extra else nil
+end
+
+local function nestSign(root: BasePart, tier, requirement: number?)
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "Placa"
+	gui.Size = UDim2.fromOffset(220, 70)
+	gui.StudsOffset = Vector3.new(0, 6, 0)
+	gui.MaxDistance = 260
+	gui.LightInfluence = 0
+	local title = Instance.new("TextLabel")
+	title.BackgroundTransparency = 1
+	title.Size = UDim2.fromScale(1, 0.55)
+	title.Font = Enum.Font.FredokaOne
+	title.TextScaled = true
+	title.Text = tier.emoji .. " " .. string.upper(tier.name)
+	title.TextColor3 = tier.egg:Lerp(Color3.new(1, 1, 1), 0.2)
+	Style.outline(title, 3)
+	title.Parent = gui
+	local sub = Instance.new("TextLabel")
+	sub.BackgroundTransparency = 1
+	sub.Position = UDim2.fromScale(0, 0.55)
+	sub.Size = UDim2.fromScale(1, 0.45)
+	sub.Font = Enum.Font.FredokaOne
+	sub.TextScaled = true
+	sub.Text = if requirement then "precisa de ⚡" .. requirement else "qualquer um abre"
+	sub.TextColor3 = Color3.new(1, 1, 1)
+	Style.outline(sub, 2.5)
+	sub.Parent = gui
+	gui.Parent = root
+end
+
+local function spawnFixedNest(routeId: string, tierIndex: number)
+	local zone = zones[routeId]
+	local route = Routes.byId[routeId]
+	local tier = NEST_TIERS[tierIndex]
+	local requirement = nestRequirement(routeId, tier)
+	local model, root = buildNode({ nest = true }, route)
+	model.Name = "Ninho"
+	model:SetAttribute("Requisito", requirement or 0)
+	model:SetAttribute("Tipo", tier.name)
+	-- Ovo da cor do ninho; o dourado brilha.
+	for _, part in model:GetDescendants() do
+		if part:IsA("Part") and part.Shape == Enum.PartType.Ball then
+			part.Color = tier.egg
+			if tier.neon then
+				part.Material = Enum.Material.Neon
+			end
+		end
+	end
+	local offset = (tierIndex - 2) * NEST_SPACING
+	model:PivotTo(CFrame.new(zone.origin + Vector3.new(offset, 0.8, 0)))
+	nestSign(root, tier, requirement)
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Abrir ninho"
+	prompt.ObjectText = tier.name .. (if requirement then " (⚡" .. requirement .. ")" else "")
+	prompt.HoldDuration = tier.hold
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = root
+
+	local function fastEnough(player: Player): boolean
+		local profile = DataService.get(player)
+		return profile ~= nil and (requirement == nil or Balance.walkSpeed(profile) >= requirement)
+	end
+	prompt.PromptButtonHoldBegan:Connect(function(player)
+		if fastEnough(player) then
+			GuardianService.alert(player, root.Position, 1)
+		end
+	end)
+	local taken = false
+	prompt.Triggered:Connect(function(player)
+		local profile = DataService.get(player)
+		if taken or not profile or not profile.routes[routeId] then
+			return
+		end
+		if not fastEnough(player) then
+			Notify.toast(player, "🔒 Precisa de ⚡" .. requirement .. " para o " .. tier.name .. ". Treine na esteira!", Color3.fromRGB(255, 120, 100))
+			return
+		end
+		taken = true
+		model:Destroy()
+		collect(player, route, { nest = true }, tier.luck)
+		task.delay(tier.respawn, spawnFixedNest, routeId, tierIndex)
+	end)
+	model.Parent = zone.nodes
+end
+
 function RouteService.travel(player: Player, target: string): (boolean, string?)
 	if target == "Fazenda" then
 		return FarmService.teleportHome(player)
@@ -4596,6 +4714,9 @@ function RouteService.init(zoneMap, portals: { [string]: BasePart })
 	for routeId, zone in zones do
 		for _ = 1, Routes.byId[routeId].nodeCount do
 			spawnNode(routeId)
+		end
+		for tierIndex = 1, #NEST_TIERS do
+			spawnFixedNest(routeId, tierIndex)
 		end
 		zone.returnField.Touched:Connect(function(hit)
 			onPortalTouched(hit, "Fazenda")
@@ -5276,7 +5397,7 @@ local function currentZone(position: Vector3): string?
 	return nil
 end
 
-local function nearestNode(routeId: string, from: Vector3, nestsOnly: boolean): Vector3?
+local function nearestNode(routeId: string, from: Vector3, nestsOnly: boolean, speed: number?): Vector3?
 	local world = Workspace:FindFirstChild("Mundo")
 	local zones = world and world:FindFirstChild("Rotas")
 	local zone = zones and zones:FindFirstChild(routeId)
@@ -5287,11 +5408,31 @@ local function nearestNode(routeId: string, from: Vector3, nestsOnly: boolean): 
 	local best: Vector3? = nil
 	local bestDistance = math.huge
 	for _, node in nodes:GetChildren() do
-		if node:IsA("Model") and (not nestsOnly or node.Name == "Ninho") then
+		local reachable = (node:GetAttribute("Requisito") or 0) <= (speed or math.huge)
+		local wanted = if nestsOnly then node.Name == "Ninho" and reachable else node.Name ~= "Ninho"
+		if node:IsA("Model") and wanted then
 			local position = node:GetPivot().Position
 			local distance = (position - from).Magnitude
 			if distance < bestDistance then
 				best, bestDistance = position, distance
+			end
+		end
+	end
+	return best
+end
+
+local function nearestGuardian(routeId: string, from: Vector3): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	local folder = zone and zone:FindFirstChild("Guardioes")
+	local best: Vector3? = nil
+	local bestDistance = math.huge
+	for _, model in (if folder then folder:GetChildren() else {}) do
+		if model:IsA("Model") then
+			local position = model:GetPivot().Position
+			if (position - from).Magnitude < bestDistance then
+				best, bestDistance = position, (position - from).Magnitude
 			end
 		end
 	end
@@ -5438,11 +5579,16 @@ function Guide.update()
 	elseif canUnlockNextRoute(profile, coins) then
 		text, button = "🗺️ Libere uma rota nova!", "Rotas"
 	elseif zone then
-		place = nearestNode(zone, root.Position, true)
-		if place then
-			text = "🥚 Abra o ninho!"
-		else
+		-- Dentro da rota o guia segue o que a missão pede.
+		local stat = player:GetAttribute("MissaoStat")
+		local nest = nearestNode(zone, root.Position, true, Balance.walkSpeed(profile))
+		local guardian = if type(stat) == "string" and string.sub(stat, 1, 3) == "ko_" then nearestGuardian(zone, root.Position) else nil
+		if guardian then
+			text, place = "👊 Bata no bicho 3 vezes (F)!", guardian
+		elseif stat == "collected" or not nest then
 			text, place = "✨ Colete os itens!", nearestNode(zone, root.Position, false)
+		else
+			text, place = "🥚 Abra o ninho!", nest
 		end
 	else
 		text, place = "🌀 Entre no portal!", portalPosition(bestUnlockedRoute(profile))
@@ -7279,12 +7425,12 @@ local Kit = require(script.Parent.Parent.Kit)
 
 return function(content: Frame, profile, _ctx)
 	Kit.label({
-		Text = "Materiais são usados para evoluir seus animais. Itens brilhantes nas rotas são raros!",
-		Font = Enum.Font.Gotham,
-		TextSize = 14,
-		TextColor3 = Kit.colors.muted,
+		Text = "⬆️ Estes itens servem para EVOLUIR seus animais: abra o 🐔 Animais e aperte Evoluir.\nItens que brilham nas rotas são raros!",
+		Font = Enum.Font.FredokaOne,
+		TextSize = 17,
+		TextColor3 = Kit.colors.text,
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.new(1, -8, 0, 22),
+		Size = UDim2.new(1, -8, 0, 46),
 		LayoutOrder = 0,
 		Parent = content,
 	})

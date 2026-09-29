@@ -47,7 +47,7 @@ local function currentZone(position: Vector3): string?
 	return nil
 end
 
-local function nearestNode(routeId: string, from: Vector3, nestsOnly: boolean): Vector3?
+local function nearestNode(routeId: string, from: Vector3, nestsOnly: boolean, speed: number?): Vector3?
 	local world = Workspace:FindFirstChild("Mundo")
 	local zones = world and world:FindFirstChild("Rotas")
 	local zone = zones and zones:FindFirstChild(routeId)
@@ -58,11 +58,31 @@ local function nearestNode(routeId: string, from: Vector3, nestsOnly: boolean): 
 	local best: Vector3? = nil
 	local bestDistance = math.huge
 	for _, node in nodes:GetChildren() do
-		if node:IsA("Model") and (not nestsOnly or node.Name == "Ninho") then
+		local reachable = (node:GetAttribute("Requisito") or 0) <= (speed or math.huge)
+		local wanted = if nestsOnly then node.Name == "Ninho" and reachable else node.Name ~= "Ninho"
+		if node:IsA("Model") and wanted then
 			local position = node:GetPivot().Position
 			local distance = (position - from).Magnitude
 			if distance < bestDistance then
 				best, bestDistance = position, distance
+			end
+		end
+	end
+	return best
+end
+
+local function nearestGuardian(routeId: string, from: Vector3): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	local folder = zone and zone:FindFirstChild("Guardioes")
+	local best: Vector3? = nil
+	local bestDistance = math.huge
+	for _, model in (if folder then folder:GetChildren() else {}) do
+		if model:IsA("Model") then
+			local position = model:GetPivot().Position
+			if (position - from).Magnitude < bestDistance then
+				best, bestDistance = position, (position - from).Magnitude
 			end
 		end
 	end
@@ -209,11 +229,16 @@ function Guide.update()
 	elseif canUnlockNextRoute(profile, coins) then
 		text, button = "🗺️ Libere uma rota nova!", "Rotas"
 	elseif zone then
-		place = nearestNode(zone, root.Position, true)
-		if place then
-			text = "🥚 Abra o ninho!"
-		else
+		-- Dentro da rota o guia segue o que a missão pede.
+		local stat = player:GetAttribute("MissaoStat")
+		local nest = nearestNode(zone, root.Position, true, Balance.walkSpeed(profile))
+		local guardian = if type(stat) == "string" and string.sub(stat, 1, 3) == "ko_" then nearestGuardian(zone, root.Position) else nil
+		if guardian then
+			text, place = "👊 Bata no bicho 3 vezes (F)!", guardian
+		elseif stat == "collected" or not nest then
 			text, place = "✨ Colete os itens!", nearestNode(zone, root.Position, false)
+		else
+			text, place = "🥚 Abra o ninho!", nest
 		end
 	else
 		text, place = "🌀 Entre no portal!", portalPosition(bestUnlockedRoute(profile))

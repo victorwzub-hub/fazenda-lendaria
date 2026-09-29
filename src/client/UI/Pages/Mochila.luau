@@ -8,12 +8,12 @@ local Kit = require(script.Parent.Parent.Kit)
 
 return function(content: Frame, profile, _ctx)
 	Kit.label({
-		Text = "Materiais são usados para evoluir seus animais. Itens brilhantes nas rotas são raros!",
-		Font = Enum.Font.Gotham,
-		TextSize = 14,
-		TextColor3 = Kit.colors.muted,
+		Text = "⬆️ Estes itens servem para EVOLUIR seus animais: abra o 🐔 Animais e aperte Evoluir.\nItens que brilham nas rotas são raros!",
+		Font = Enum.Font.FredokaOne,
+		TextSize = 17,
+		TextColor3 = Kit.colors.text,
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.new(1, -8, 0, 22),
+		Size = UDim2.new(1, -8, 0, 46),
 		LayoutOrder = 0,
 		Parent = content,
 	})
