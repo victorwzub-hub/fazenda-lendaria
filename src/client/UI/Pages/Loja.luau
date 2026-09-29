@@ -1,4 +1,5 @@
 local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -12,27 +13,37 @@ local State = require(script.Parent.Parent.Parent.State)
 
 local priceCache: { [number]: number } = {}
 
-local EFFECTS: { [string]: (any) -> string } = {
+-- Cada efeito devolve (nome, valor) para mostrar "agora → depois de comprar".
+local EFFECTS: { [string]: (any) -> (string, string) } = {
 	Sorte = function(profile)
-		return string.format("Sorte base: x%.2f", 1 + Balance.LUCK_PER_LEVEL * (profile.upgrades.Sorte or 0))
+		return "Sorte", string.format("x%.2f", 1 + Balance.LUCK_PER_LEVEL * (profile.upgrades.Sorte or 0))
 	end,
-	Fazenda = function()
-		return "Espaços: " .. State.capacity()
+	Fazenda = function(profile)
+		return "Espaços", tostring(Balance.capacity(profile, State.hasPass("FazendaGigante")))
 	end,
 	Velocidade = function(profile)
-		return "Velocidade: " .. Balance.walkSpeed(profile)
+		return "Velocidade", "⚡" .. Balance.walkSpeed(profile)
 	end,
 	Pulo = function(profile)
-		local jumps = 1 + Balance.extraJumps(profile)
-		return "Pulos seguidos: " .. jumps .. " • altura " .. string.format("%.1f", Balance.jumpHeight(profile))
+		return "Pulos seguidos", (1 + Balance.extraJumps(profile)) .. " (altura " .. string.format("%.1f", Balance.jumpHeight(profile)) .. ")"
 	end,
 	Rede = function(profile)
-		return string.format("Itens a mais: +%.2f por coleta", Balance.NET_CHANCE_PER_LEVEL * (profile.upgrades.Rede or 0))
+		return "Itens a mais", string.format("+%.1f por coleta", Balance.NET_CHANCE_PER_LEVEL * (profile.upgrades.Rede or 0))
 	end,
 	Cesta = function(profile)
-		return "Cesta: " .. Balance.basketCapacity(profile) .. " itens"
+		return "Cesta", Balance.basketCapacity(profile) .. " itens"
+	end,
+	Esteira = function(profile)
+		return "Treino", "+" .. Balance.trainGain(profile) .. "/s"
 	end,
 }
+
+-- Perfil de mentira com um nível a mais, para calcular o "depois".
+local function withLevel(profile, upgradeId: string, level: number)
+	local upgrades = table.clone(profile.upgrades)
+	upgrades[upgradeId] = level
+	return setmetatable({ upgrades = upgrades }, { __index = profile })
+end
 
 local function showPrice(button: TextButton, passId: number)
 	local function apply(price: number)
@@ -71,8 +82,15 @@ local function upgradeCards(content: Frame, profile, ctx, ids: { string }, first
 			Size = UDim2.new(1, -200, 0, 26),
 			Parent = card,
 		})
+		local label, now = EFFECTS[upgradeId](profile)
+		local effect = label .. ": " .. now
+		if level < def.max then
+			local _, after = EFFECTS[upgradeId](withLevel(profile, upgradeId, level + 1))
+			effect = label .. ": " .. now .. "  →  " .. Kit.hex(Kit.colors.good, "<b>" .. after .. "</b>")
+		end
 		Kit.label({
-			Text = def.desc .. "\n" .. EFFECTS[upgradeId](profile),
+			Text = def.desc .. "\n" .. effect,
+			RichText = true,
 			Font = Enum.Font.Gotham,
 			TextSize = 14,
 			TextColor3 = Kit.colors.muted,
@@ -87,6 +105,25 @@ local function upgradeCards(content: Frame, profile, ctx, ids: { string }, first
 			Size = UDim2.fromOffset(160, 48),
 			Parent = card,
 		}
+		-- Item que a missão atual pede ganha destaque.
+		if Players.LocalPlayer:GetAttribute("MissaoUpgrade") == upgradeId and level < def.max then
+			local stroke = card:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				stroke.Color = Kit.colors.yellow
+				stroke.Thickness = 4
+			end
+			Kit.label({
+				Text = "⭐ MISSÃO",
+				Font = Enum.Font.FredokaOne,
+				TextSize = 15,
+				TextColor3 = Color3.fromRGB(200, 120, 0),
+				TextXAlignment = Enum.TextXAlignment.Center,
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.new(1, -12, 0, 2),
+				Size = UDim2.fromOffset(160, 18),
+				Parent = card,
+			})
+		end
 		if level >= def.max then
 			Kit.button("MÁXIMO ⭐", Kit.colors.gray, function() end, buttonProps)
 		else

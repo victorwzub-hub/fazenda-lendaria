@@ -12,6 +12,7 @@ local MapBuilder = require(Services.MapBuilder)
 local Notify = require(Services.Notify)
 local PassService = require(Services.PassService)
 local RouteService = require(Services.RouteService)
+local MissionService = require(Services.MissionService)
 local TrainingService = require(Services.TrainingService)
 local TreasureService = require(Services.TreasureService)
 
@@ -25,6 +26,7 @@ BoostService.init(map.zones)
 EquipmentService.init()
 TreasureService.init(map.zones)
 TrainingService.init(map.plots)
+MissionService.init()
 ActionService.init()
 
 PassService.onGranted(function(player)
@@ -49,6 +51,7 @@ local function onPlayerAdded(player: Player)
 	Basket.setup(player)
 	EquipmentService.refresh(player)
 	TrainingService.setup(player)
+	MissionService.setup(player)
 	if isNew then
 		FarmService.giveStarter(player)
 	end

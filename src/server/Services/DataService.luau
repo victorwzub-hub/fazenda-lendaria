@@ -37,11 +37,12 @@ local function template()
 		materials = {},
 		animals = {},
 		nextAnimalId = 1,
-		upgrades = { Sorte = 0, Fazenda = 0, Velocidade = 0, Pulo = 0, Rede = 0, Cesta = 0 },
+		upgrades = { Sorte = 0, Fazenda = 0, Velocidade = 0, Pulo = 0, Rede = 0, Cesta = 0, Esteira = 0 },
 		training = 0,
+		mission = { index = 1, base = 0 },
 		routes = { Galinheiro = true },
 		index = {},
-		stats = { legendaries = 0, nests = 0, collected = 0 },
+		stats = { legendaries = 0, nests = 0, collected = 0, deposited = 0, evolved = 0, chests = 0 },
 		lastOnline = 0,
 	}
 end

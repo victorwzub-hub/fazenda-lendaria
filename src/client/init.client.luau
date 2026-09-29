@@ -12,6 +12,8 @@ local DoubleJump = require(script.DoubleJump)
 local Sfx = require(script.Sfx)
 local Treadmill = require(script.Treadmill)
 local Welcome = require(script.UI.Welcome)
+local MissionPanel = require(script.UI.MissionPanel)
+local TrainingPanel = require(script.UI.TrainingPanel)
 local Hud = require(script.UI.Hud)
 local Kit = require(script.UI.Kit)
 local Notifications = require(script.UI.Notifications)
@@ -142,6 +144,8 @@ Hud.mount(gui, scales, {
 })
 
 Notifications.mount(gui, scales)
+MissionPanel.mount(gui, scales)
+TrainingPanel.mount(gui, scales)
 
 local camera = Workspace.CurrentCamera
 local function rescale()
@@ -198,5 +202,7 @@ end)
 while true do
 	Hud.tick()
 	Guide.update()
+	MissionPanel.tick()
+	TrainingPanel.tick()
 	task.wait(0.5)
 end

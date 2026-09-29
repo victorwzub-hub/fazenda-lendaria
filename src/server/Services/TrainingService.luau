@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
+local Guardians = require(Shared.Config.Guardians)
 
 local DataService = require(script.Parent.DataService)
 local FarmService = require(script.Parent.FarmService)
@@ -48,17 +49,32 @@ local function tick(player: Player)
 	end
 	progress[player] = 0
 	local before = Balance.trainedSpeed(profile)
-	profile.training = math.min((profile.training or 0) + Balance.TRAIN_GAIN, Balance.TRAIN_MAX)
+	local oldSpeed = Balance.walkSpeed(profile)
+	profile.training = math.min((profile.training or 0) + Balance.trainGain(profile), Balance.TRAIN_MAX)
 	player:SetAttribute("Treino", profile.training)
 	if Balance.trainedSpeed(profile) > before then
 		FarmService.applySpeed(player)
 		DataService.push(player)
-		Notify.toast(
-			player,
-			"⚡ +1 de velocidade pelo treino! Agora: " .. Balance.walkSpeed(profile),
-			Color3.fromRGB(120, 230, 255),
-			"boost"
-		)
+		local speed = Balance.walkSpeed(profile)
+		-- Comemora quando passa um guardião: é aí que o treino faz diferença na hora de fugir.
+		local passed = nil
+		for _, routeId in Guardians.order do
+			local guardian = Guardians.byRoute[routeId]
+			if oldSpeed <= guardian.speed and speed > guardian.speed then
+				passed = guardian
+			end
+		end
+		if passed then
+			Notify.big(
+				player,
+				"⚡ VELOCIDADE " .. speed .. "!",
+				"Agora você corre mais que o " .. passed.emoji .. " " .. passed.name .. " (⚡" .. passed.speed .. ")",
+				Color3.fromRGB(120, 230, 255),
+				"revelar"
+			)
+		else
+			Notify.toast(player, "⚡ +1 de velocidade! Agora: " .. speed, Color3.fromRGB(120, 230, 255), "boost")
+		end
 	end
 end
 

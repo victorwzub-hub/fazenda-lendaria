@@ -11,6 +11,7 @@ local Balance = require(Shared.Balance)
 local Rarities = require(Shared.Config.Rarities)
 local Routes = require(Shared.Config.Routes)
 local Style = require(Shared.Style)
+local Upgrades = require(Shared.Config.Upgrades)
 
 local State = require(script.Parent.State)
 local Hud = require(script.Parent.UI.Hud)
@@ -93,6 +94,33 @@ local function safeZonePosition(routeId: string): Vector3?
 	return if safe then (safe :: BasePart).Position else nil
 end
 
+-- Esteira da fazenda deste jogador (a placa do lote tem o nome dele).
+local function myTreadmill(): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local lotes = world and world:FindFirstChild("Lotes")
+	if not lotes then
+		return nil
+	end
+	for _, lote in lotes:GetChildren() do
+		for _, label in lote:GetDescendants() do
+			if label:IsA("TextLabel") and label.Name == "Dono" and string.find(label.Text, player.DisplayName, 1, true) then
+				local belt = lote:FindFirstChild("Esteira") and lote.Esteira:FindFirstChild("Lona")
+				return if belt then (belt :: BasePart).Position else nil
+			end
+		end
+	end
+	return nil
+end
+
+local function treasurePosition(routeId: string): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	local tree = zone and zone:FindFirstChild("ArvoreDoTesouro")
+	local chest = tree and tree:FindFirstChild("Bau")
+	return if chest then (chest :: BasePart).Position else nil
+end
+
 -- Materiais guardados + o que está na cesta: "se eu levar isso para casa, dá para evoluir?".
 local function withBasket(profile)
 	local ok, basket = pcall(HttpService.JSONDecode, HttpService, player:GetAttribute("CestaItens") or "{}")
@@ -151,6 +179,9 @@ function Guide.update()
 	local button: string? = nil
 	local place: Vector3? = nil
 	local chaser = player:GetAttribute("Perseguido")
+	local hint = player:GetAttribute("MissaoDica")
+	local mission = player:GetAttribute("MissaoTexto") or ""
+	local missionUpgrade = player:GetAttribute("MissaoUpgrade")
 	local basket = player:GetAttribute("Cesta") or 0
 	local basketFull = basket >= (player:GetAttribute("CestaMax") or math.huge)
 	if player:GetAttribute("NaEsteira") then
@@ -167,6 +198,12 @@ function Guide.update()
 		text, place = "🧺 Cesta cheia! Volte para casa!", returnPortalPosition(zone)
 	elseif zone and basket > 0 and not canEvolveSomething(profile, coins) and canEvolveSomething(withBasket(profile), coins) then
 		text, place = "🧺 Leve a cesta para casa!", returnPortalPosition(zone)
+	elseif hint == "esteira" and not zone then
+		text, place = "🏃 " .. mission, myTreadmill()
+	elseif hint == "loja" and missionUpgrade and coins >= Upgrades.cost(missionUpgrade, profile.upgrades[missionUpgrade] or 0) then
+		text, button = "🛒 " .. mission, "Loja"
+	elseif hint == "tesouro" and zone then
+		text, place = "💎 Suba até o baú no topo da árvore!", treasurePosition(zone)
 	elseif canEvolveSomething(profile, coins) then
 		text, button = "⬆️ Evolua seu animal!", "Animais"
 	elseif canUnlockNextRoute(profile, coins) then

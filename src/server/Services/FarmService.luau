@@ -300,6 +300,7 @@ function FarmService.evolve(player: Player, animalId: string): (boolean, string?
 		profile.materials[materialId] -= amount
 	end
 	animal.rarity += 1
+	profile.stats.evolved = (profile.stats.evolved or 0) + 1
 	registerDiscovery(player, profile, animal)
 	spawnModel(player, animal)
 	DataService.push(player)

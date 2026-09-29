@@ -11,20 +11,22 @@ Balance.SHINY_MULT = 3
 Balance.BASE_CAPACITY = 6
 Balance.CAPACITY_PER_LEVEL = 2
 Balance.GIANT_FARM_BONUS = 10
-Balance.LUCK_PER_LEVEL = 0.1
+Balance.LUCK_PER_LEVEL = 0.15
 Balance.GOLDEN_HOUR_LUCK = 2
 Balance.VIP_COIN_MULT = 2
 Balance.OFFLINE_RATE = 0.5
 Balance.OFFLINE_MAX_SECONDS = 8 * 60 * 60
 Balance.SELL_SECONDS = 20
 Balance.BOOST_SPEED = 8
--- Treino: +10 pontos por segundo em cima da esteira; 120 pontos = +1 de velocidade (até +15).
+-- Treino: +10 pontos por segundo na esteira (x Esteira Turbo); 100 pontos = +1 de velocidade, até +30.
 Balance.TRAIN_GAIN = 10
-Balance.TRAIN_PER_SPEED = 120
-Balance.TRAIN_MAX = 1800
+Balance.TRAIN_PER_SPEED = 100
+Balance.TRAIN_MAX = 3000
+Balance.BASE_SPEED = 16
+Balance.BOOTS_SPEED = 3
 Balance.BASKET_BASE = 20
-Balance.BASKET_PER_LEVEL = 5
-Balance.NET_CHANCE_PER_LEVEL = 0.25
+Balance.BASKET_PER_LEVEL = 10
+Balance.NET_CHANCE_PER_LEVEL = 0.5
 
 -- Custo para subir da raridade [i] para i+1: { comum, incomum, raro, cristais, moedas (x base da espécie) }
 local EVOLVE_STEPS = {
@@ -77,12 +79,17 @@ function Balance.luck(profile, hasLuckPass: boolean, goldenHour: boolean): numbe
 	return luck
 end
 
+-- Pontos de treino por segundo: Esteira Turbo multiplica (nv 1 = x2, nv 2 = x3…).
+function Balance.trainGain(profile): number
+	return Balance.TRAIN_GAIN * (1 + (profile.upgrades.Esteira or 0))
+end
+
 function Balance.trainedSpeed(profile): number
 	return math.floor(math.min(profile.training or 0, Balance.TRAIN_MAX) / Balance.TRAIN_PER_SPEED)
 end
 
 function Balance.walkSpeed(profile): number
-	return 16 + 2 * (profile.upgrades.Velocidade or 0) + Balance.trainedSpeed(profile)
+	return Balance.BASE_SPEED + Balance.BOOTS_SPEED * (profile.upgrades.Velocidade or 0) + Balance.trainedSpeed(profile)
 end
 
 -- Pulos no ar além do normal (nv 1 = duplo, nv 2 = triplo).

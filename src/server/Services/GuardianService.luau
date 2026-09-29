@@ -8,6 +8,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local AnimalModel = require(Shared.AnimalModel)
+local Guardians = require(Shared.Config.Guardians)
 local Materials = require(Shared.Config.Materials)
 local Remotes = require(Shared.Remotes)
 local Style = require(Shared.Style)
@@ -19,12 +20,7 @@ local GuardianService = {}
 
 type Def = { species: string, name: string, speed: number, rarity: number }
 
-local DEFS: { [string]: Def } = {
-	Galinheiro = { species = "Galinha", name = "Galo Bravo", speed = 15, rarity = 3 },
-	Chiqueiro = { species = "Porco", name = "Porco Bravo", speed = 17, rarity = 3 },
-	Pasto = { species = "Vaca", name = "Touro Bravo", speed = 19, rarity = 4 },
-	Pradaria = { species = "Cavalo", name = "Cavalo Selvagem", speed = 21, rarity = 4 },
-}
+local DEFS: { [string]: Def } = Guardians.byRoute
 
 local PER_ZONE = 3
 local MODEL_SCALE = 1.6
@@ -345,7 +341,7 @@ function GuardianService.init(zones)
 				local tag = root:FindFirstChild("Tag")
 				local tagLabel = tag and tag:FindFirstChildOfClass("TextLabel")
 				if tagLabel then
-					tagLabel.Text = "😠 " .. def.name
+					tagLabel.Text = "😠 " .. def.name .. " ⚡" .. def.speed
 					tagLabel.TextColor3 = ANGRY
 				end
 				local angle = (i / PER_ZONE) * math.pi * 2

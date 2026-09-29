@@ -5,7 +5,7 @@ Upgrades.byId = {
 		id = "Sorte",
 		name = "Sorte",
 		emoji = "🍀",
-		desc = "+10% de sorte: ninhos mais raros e chance de coletar em dobro",
+		desc = "Ninhos mais raros e mais chance de coletar em dobro",
 		max = 20,
 		baseCost = 250,
 		growth = 1.65,
@@ -23,7 +23,7 @@ Upgrades.byId = {
 		id = "Velocidade",
 		name = "Botas Rápidas",
 		emoji = "👢",
-		desc = "+2 de velocidade para fugir dos guardiões",
+		desc = "+3 de velocidade para fugir dos guardiões",
 		max = 8,
 		baseCost = 100,
 		growth = 1.8,
@@ -32,7 +32,7 @@ Upgrades.byId = {
 		id = "Rede",
 		name = "Rede de Coleta",
 		emoji = "🥅",
-		desc = "+25% de chance de pegar 1 item a mais em cada coleta",
+		desc = "Pega mais itens em cada coleta",
 		max = 8,
 		baseCost = 150,
 		growth = 1.8,
@@ -41,10 +41,19 @@ Upgrades.byId = {
 		id = "Cesta",
 		name = "Cesta Maior",
 		emoji = "🧺",
-		desc = "+5 de espaço na cesta antes de voltar para casa",
+		desc = "+10 de espaço na cesta antes de voltar para casa",
 		max = 10,
 		baseCost = 120,
 		growth = 1.75,
+	},
+	Esteira = {
+		id = "Esteira",
+		name = "Esteira Turbo",
+		emoji = "🏃",
+		desc = "Treina muito mais rápido na esteira",
+		max = 4,
+		baseCost = 200,
+		growth = 2.6,
 	},
 	Pulo = {
 		id = "Pulo",
@@ -59,8 +68,8 @@ Upgrades.byId = {
 
 -- Equipamentos aparecem no boneco; melhorias da fazenda não.
 Upgrades.equipment = { "Velocidade", "Pulo", "Rede", "Cesta" }
-Upgrades.farm = { "Sorte", "Fazenda" }
-Upgrades.order = { "Sorte", "Fazenda", "Velocidade", "Pulo", "Rede", "Cesta" }
+Upgrades.farm = { "Esteira", "Sorte", "Fazenda" }
+Upgrades.order = { "Esteira", "Sorte", "Fazenda", "Velocidade", "Pulo", "Rede", "Cesta" }
 
 function Upgrades.cost(id: string, level: number): number
 	local def = Upgrades.byId[id]

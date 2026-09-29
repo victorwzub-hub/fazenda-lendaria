@@ -95,6 +95,8 @@ function Basket.deposit(player: Player, silent: boolean?): number
 		DataService.addMaterial(player, materialId, count)
 	end
 	baskets[player] = nil
+	local profile = DataService.get(player)
+	profile.stats.deposited = (profile.stats.deposited or 0) + 1
 	sync(player)
 	DataService.push(player)
 	if not silent then
