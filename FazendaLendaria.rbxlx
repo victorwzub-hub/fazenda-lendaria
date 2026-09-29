@@ -22,7 +22,12 @@ local ACCENT_TINT = { 0, 0.55, 0.65, 0.75, 0.85, 0.9 }
 local BODY_TINT = { 0, 0.1, 0.18, 0.32, 0.5, 0.3 }
 -- Parte com esta tag muda de cor em arco-íris no cliente (ver client/Rainbow).
 AnimalModel.RAINBOW_TAG = "Arcoiris"
+AnimalModel.ANIMATED_TAG = "Bicho"
 
+-- g = grupo da junta (Motor6D) que o cliente anima (ver client/AnimalAnimator):
+--   "head" (cabeça/pescoço), "tail" (rabo), "wingL"/"wingR" (asas),
+--   "legFL"/"legFR"/"legBL"/"legBR" (patas) ou "legL"/"legR" (aves).
+-- O pivô da junta de cada pata é o topo da primeira peça do grupo; os outros vêm de `joints`.
 type PartSpec = {
 	size: Vector3,
 	at: Vector3,
@@ -30,25 +35,40 @@ type PartSpec = {
 	shape: string?,
 	rot: CFrame?,
 	material: Enum.Material?,
+	g: string?,
 }
-type Shape = { parts: { PartSpec }, crown: Vector3, tag: number }
+type Shape = { parts: { PartSpec }, crown: Vector3, tag: number, joints: { [string]: Vector3 }, pet: number }
 
 local function rad(deg: number): number
 	return math.rad(deg)
 end
 
-local function eyes(y: number, z: number, x: number, size: number): { PartSpec }
+local function eyes(y: number, z: number, x: number, size: number, color: (string | Color3)?): { PartSpec }
 	return {
-		{ size = Vector3.one * size, at = Vector3.new(x, y, z), color = EYE },
-		{ size = Vector3.one * size, at = Vector3.new(-x, y, z), color = EYE },
+		{ size = Vector3.one * size, at = Vector3.new(x, y, z), color = color or EYE, g = "head" },
+		{ size = Vector3.one * size, at = Vector3.new(-x, y, z), color = color or EYE, g = "head" },
 	}
 end
 
+-- Quatro patas; a da frente fica no -Z.
 local function legs(size: Vector3, x: number, z: number, color: string | Color3): { PartSpec }
 	local result = {}
 	for _, sx in { -1, 1 } do
 		for _, sz in { -1, 1 } do
-			table.insert(result, { size = size, at = Vector3.new(sx * x, size.Y / 2, sz * z), color = color })
+			local group = "leg" .. (if sz < 0 then "F" else "B") .. (if sx < 0 then "L" else "R")
+			table.insert(result, { size = size, at = Vector3.new(sx * x, size.Y / 2, sz * z), color = color, g = group })
+		end
+	end
+	return result
+end
+
+-- Cascos na ponta das patas (mesmo grupo: vêm depois das patas, então usam o pivô delas).
+local function hooves(size: Vector3, x: number, z: number, color: string | Color3): { PartSpec }
+	local result = {}
+	for _, sx in { -1, 1 } do
+		for _, sz in { -1, 1 } do
+			local group = "leg" .. (if sz < 0 then "F" else "B") .. (if sx < 0 then "L" else "R")
+			table.insert(result, { size = size, at = Vector3.new(sx * x, size.Y / 2, sz * z), color = color, g = group })
 		end
 	end
 	return result
@@ -62,84 +82,330 @@ local function concat(...: { PartSpec }): { PartSpec }
 	return result
 end
 
+-- Leque do peru: placas em arco atrás do corpo.
+local function fan(center: Vector3): { PartSpec }
+	local result = {}
+	for i = -3, 3 do
+		local angle = rad(i * 22)
+		local rot = CFrame.Angles(0, 0, angle)
+		local offset = (rot * CFrame.new(0, 1.7, 0)).Position
+		table.insert(result, {
+			size = Vector3.new(0.9, 3.2, 0.25),
+			at = center + offset,
+			rot = rot,
+			color = if i % 2 == 0 then "accent" else "tip",
+			g = "tail",
+		})
+	end
+	return result
+end
+
 local SHAPES: { [string]: Shape } = {
 	ave = {
 		crown = Vector3.new(0, 4.4, -0.75),
 		tag = 5.6,
+		pet = 0.75,
+		joints = {
+			head = Vector3.new(0, 2.6, -0.8),
+			tail = Vector3.new(0, 2.3, 0.8),
+			wingL = Vector3.new(-1.05, 2.35, 0.1),
+			wingR = Vector3.new(1.05, 2.35, 0.1),
+		},
 		parts = concat({
+			{ size = Vector3.new(0.2, 0.8, 0.2), at = Vector3.new(0.45, 0.4, 0), color = "beak", g = "legR" },
+			{ size = Vector3.new(0.2, 0.8, 0.2), at = Vector3.new(-0.45, 0.4, 0), color = "beak", g = "legL" },
 			{ size = Vector3.new(2.2, 2, 2.6), at = Vector3.new(0, 1.8, 0), color = "body" },
 			{
 				size = Vector3.new(0.5, 1.2, 0.9),
 				at = Vector3.new(0, 2.5, 1.15),
 				color = "body",
 				rot = CFrame.Angles(rad(-35), 0, 0),
+				g = "tail",
 			},
-			{ size = Vector3.new(1.4, 1.4, 1.4), at = Vector3.new(0, 3.2, -0.9), color = "body" },
-			{ size = Vector3.new(0.45, 0.3, 0.55), at = Vector3.new(0, 3.05, -1.8), color = "beak" },
-			{ size = Vector3.new(0.22, 0.55, 0.8), at = Vector3.new(0, 3.95, -0.9), color = "red" },
-			{ size = Vector3.new(0.22, 0.4, 0.22), at = Vector3.new(0, 2.7, -1.6), color = "red" },
-			{ size = Vector3.new(0.3, 1.0, 1.5), at = Vector3.new(1.15, 1.9, 0.1), color = "accent" },
-			{ size = Vector3.new(0.3, 1.0, 1.5), at = Vector3.new(-1.15, 1.9, 0.1), color = "accent" },
-			{ size = Vector3.new(0.2, 0.8, 0.2), at = Vector3.new(0.45, 0.4, 0), color = "beak" },
-			{ size = Vector3.new(0.2, 0.8, 0.2), at = Vector3.new(-0.45, 0.4, 0), color = "beak" },
+			{ size = Vector3.new(1.4, 1.4, 1.4), at = Vector3.new(0, 3.2, -0.9), color = "body", g = "head" },
+			{ size = Vector3.new(0.45, 0.3, 0.55), at = Vector3.new(0, 3.05, -1.8), color = "beak", g = "head" },
+			{ size = Vector3.new(0.22, 0.55, 0.8), at = Vector3.new(0, 3.95, -0.9), color = "red", g = "head" },
+			{ size = Vector3.new(0.22, 0.4, 0.22), at = Vector3.new(0, 2.7, -1.6), color = "red", g = "head" },
+			{ size = Vector3.new(0.3, 1.0, 1.5), at = Vector3.new(1.15, 1.9, 0.1), color = "accent", g = "wingR" },
+			{ size = Vector3.new(0.3, 1.0, 1.5), at = Vector3.new(-1.15, 1.9, 0.1), color = "accent", g = "wingL" },
 		}, eyes(3.35, -1.62, 0.4, 0.28)),
+	},
+	pato = {
+		crown = Vector3.new(0, 4.2, -1.1),
+		tag = 5.2,
+		pet = 0.75,
+		joints = {
+			head = Vector3.new(0, 2.1, -0.8),
+			tail = Vector3.new(0, 1.9, 1.2),
+			wingL = Vector3.new(-1.15, 2.1, 0.2),
+			wingR = Vector3.new(1.15, 2.1, 0.2),
+		},
+		parts = concat({
+			{ size = Vector3.new(0.22, 0.7, 0.22), at = Vector3.new(0.5, 0.35, 0.1), color = "beak", g = "legR" },
+			{ size = Vector3.new(0.22, 0.7, 0.22), at = Vector3.new(-0.5, 0.35, 0.1), color = "beak", g = "legL" },
+			{ size = Vector3.new(0.7, 0.14, 0.8), at = Vector3.new(0.5, 0.07, -0.15), color = "beak", g = "legR" },
+			{ size = Vector3.new(0.7, 0.14, 0.8), at = Vector3.new(-0.5, 0.07, -0.15), color = "beak", g = "legL" },
+			{ size = Vector3.new(2.4, 1.6, 2.8), at = Vector3.new(0, 1.5, 0.1), color = "body" },
+			{
+				size = Vector3.new(0.9, 0.6, 0.7),
+				at = Vector3.new(0, 2.1, 1.55),
+				color = "body",
+				rot = CFrame.Angles(rad(30), 0, 0),
+				g = "tail",
+			},
+			{ size = Vector3.new(0.9, 1.3, 0.9), at = Vector3.new(0, 2.6, -1.0), color = "head", g = "head" },
+			{ size = Vector3.new(1.2, 1.2, 1.3), at = Vector3.new(0, 3.4, -1.1), color = "head", g = "head" },
+			{ size = Vector3.new(0.95, 0.25, 0.95), at = Vector3.new(0, 3.12, -2.1), color = "beak", g = "head" },
+			{ size = Vector3.new(0.3, 0.9, 1.7), at = Vector3.new(1.25, 1.7, 0.2), color = "accent", g = "wingR" },
+			{ size = Vector3.new(0.3, 0.9, 1.7), at = Vector3.new(-1.25, 1.7, 0.2), color = "accent", g = "wingL" },
+		}, eyes(3.55, -1.76, 0.42, 0.22)),
+	},
+	peru = {
+		crown = Vector3.new(0, 4.75, -1.3),
+		tag = 6.4,
+		pet = 0.65,
+		joints = {
+			head = Vector3.new(0, 2.9, -1.1),
+			tail = Vector3.new(0, 2.4, 1.3),
+			wingL = Vector3.new(-1.25, 2.7, 0.2),
+			wingR = Vector3.new(1.25, 2.7, 0.2),
+		},
+		parts = concat({
+			{ size = Vector3.new(0.25, 0.9, 0.25), at = Vector3.new(0.55, 0.45, 0.1), color = "beak", g = "legR" },
+			{ size = Vector3.new(0.25, 0.9, 0.25), at = Vector3.new(-0.55, 0.45, 0.1), color = "beak", g = "legL" },
+			{ size = Vector3.new(2.6, 2.4, 2.8), at = Vector3.new(0, 2.0, 0.1), color = "body" },
+			{ size = Vector3.new(0.6, 1.4, 0.6), at = Vector3.new(0, 3.3, -1.2), color = "skin", g = "head" },
+			{ size = Vector3.new(0.9, 0.9, 0.9), at = Vector3.new(0, 4.1, -1.3), color = "skin", g = "head" },
+			{ size = Vector3.new(0.3, 0.25, 0.4), at = Vector3.new(0, 4.0, -1.9), color = "beak", g = "head" },
+			{ size = Vector3.new(0.2, 0.7, 0.2), at = Vector3.new(0.05, 3.6, -1.78), color = "red", g = "head" },
+			{ size = Vector3.new(0.3, 1.4, 1.8), at = Vector3.new(1.35, 2.1, 0.2), color = "accent", g = "wingR" },
+			{ size = Vector3.new(0.3, 1.4, 1.8), at = Vector3.new(-1.35, 2.1, 0.2), color = "accent", g = "wingL" },
+		}, fan(Vector3.new(0, 2.4, 1.6)), eyes(4.25, -1.76, 0.3, 0.18)),
 	},
 	porco = {
 		crown = Vector3.new(0, 2.95, -1.9),
 		tag = 4.4,
-		parts = concat({
+		pet = 0.8,
+		joints = {
+			head = Vector3.new(0, 2.0, -1.3),
+			tail = Vector3.new(0, 2.2, 1.5),
+		},
+		parts = concat(legs(Vector3.new(0.5, 0.8, 0.5), 0.7, 1.0, "body"), {
 			{ size = Vector3.new(2.2, 1.8, 3.0), at = Vector3.new(0, 1.7, 0), color = "body" },
-			{ size = Vector3.new(1.6, 1.5, 1.3), at = Vector3.new(0, 2.05, -1.9), color = "body" },
+			{ size = Vector3.new(1.6, 1.5, 1.3), at = Vector3.new(0, 2.05, -1.9), color = "body", g = "head" },
 			{
 				size = Vector3.new(0.35, 0.9, 0.9),
 				at = Vector3.new(0, 1.85, -2.7),
 				color = "accent",
 				shape = "Cylinder",
 				rot = CFrame.Angles(0, rad(90), 0),
+				g = "head",
 			},
 			{
 				size = Vector3.new(0.5, 0.5, 0.15),
 				at = Vector3.new(0.55, 2.9, -1.85),
 				color = "accent",
 				rot = CFrame.Angles(rad(-20), 0, rad(-15)),
+				g = "head",
 			},
 			{
 				size = Vector3.new(0.5, 0.5, 0.15),
 				at = Vector3.new(-0.55, 2.9, -1.85),
 				color = "accent",
 				rot = CFrame.Angles(rad(-20), 0, rad(15)),
+				g = "head",
 			},
-			{ size = Vector3.one * 0.4, at = Vector3.new(0, 2.2, 1.6), color = "accent", shape = "Ball" },
-		}, eyes(2.4, -2.56, 0.42, 0.22), legs(Vector3.new(0.5, 0.8, 0.5), 0.7, 1.0, "body")),
+			{ size = Vector3.one * 0.4, at = Vector3.new(0, 2.2, 1.6), color = "accent", shape = "Ball", g = "tail" },
+		}, eyes(2.4, -2.56, 0.42, 0.22)),
+	},
+	javali = {
+		crown = Vector3.new(0, 3.1, -2.0),
+		tag = 4.7,
+		pet = 0.75,
+		joints = {
+			head = Vector3.new(0, 2.1, -1.3),
+			tail = Vector3.new(0, 2.6, 1.6),
+		},
+		parts = concat(legs(Vector3.new(0.55, 0.9, 0.55), 0.75, 1.1, "accent"), {
+			{ size = Vector3.new(2.2, 2.0, 3.2), at = Vector3.new(0, 1.9, 0), color = "body" },
+			{ size = Vector3.new(0.6, 0.6, 2.8), at = Vector3.new(0, 3.1, 0.1), color = "accent" },
+			{ size = Vector3.new(1.5, 1.4, 1.5), at = Vector3.new(0, 2.1, -2.0), color = "body", g = "head" },
+			{ size = Vector3.new(1.0, 0.8, 0.8), at = Vector3.new(0, 1.8, -2.9), color = "muzzle", g = "head" },
+			{ size = Vector3.new(0.9, 0.6, 0.15), at = Vector3.new(0, 1.8, -3.32), color = "nose", g = "head" },
+			{
+				size = Vector3.new(0.2, 0.7, 0.2),
+				at = Vector3.new(0.5, 1.75, -3.05),
+				color = "tusk",
+				rot = CFrame.Angles(rad(-25), 0, rad(-15)),
+				g = "head",
+			},
+			{
+				size = Vector3.new(0.2, 0.7, 0.2),
+				at = Vector3.new(-0.5, 1.75, -3.05),
+				color = "tusk",
+				rot = CFrame.Angles(rad(-25), 0, rad(15)),
+				g = "head",
+			},
+			{ size = Vector3.new(0.4, 0.5, 0.2), at = Vector3.new(0.5, 2.95, -1.8), color = "accent", g = "head" },
+			{ size = Vector3.new(0.4, 0.5, 0.2), at = Vector3.new(-0.5, 2.95, -1.8), color = "accent", g = "head" },
+			{
+				size = Vector3.new(0.2, 0.9, 0.2),
+				at = Vector3.new(0, 2.2, 1.75),
+				color = "accent",
+				rot = CFrame.Angles(rad(25), 0, 0),
+				g = "tail",
+			},
+		}, eyes(2.45, -2.76, 0.42, 0.22)),
+	},
+	bode = {
+		crown = Vector3.new(0, 4.05, -1.9),
+		tag = 5.6,
+		pet = 0.7,
+		joints = {
+			head = Vector3.new(0, 3.0, -1.4),
+			tail = Vector3.new(0, 3.1, 1.45),
+		},
+		parts = concat(legs(Vector3.new(0.4, 1.6, 0.4), 0.6, 1.1, "body"), {
+			{ size = Vector3.new(1.8, 1.6, 3.0), at = Vector3.new(0, 2.4, 0), color = "body" },
+			{ size = Vector3.new(1.1, 1.1, 1.4), at = Vector3.new(0, 3.3, -1.9), color = "body", g = "head" },
+			{ size = Vector3.new(0.8, 0.6, 0.6), at = Vector3.new(0, 3.0, -2.7), color = "muzzle", g = "head" },
+			{
+				size = Vector3.new(0.25, 1.1, 0.25),
+				at = Vector3.new(0.3, 4.2, -1.55),
+				color = "horn",
+				rot = CFrame.Angles(rad(-35), 0, 0),
+				g = "head",
+			},
+			{
+				size = Vector3.new(0.25, 1.1, 0.25),
+				at = Vector3.new(-0.3, 4.2, -1.55),
+				color = "horn",
+				rot = CFrame.Angles(rad(-35), 0, 0),
+				g = "head",
+			},
+			{ size = Vector3.new(0.3, 0.7, 0.3), at = Vector3.new(0, 2.45, -2.55), color = "accent", g = "head" },
+			{ size = Vector3.new(0.6, 0.25, 0.3), at = Vector3.new(0.75, 3.4, -1.8), color = "body", g = "head" },
+			{ size = Vector3.new(0.6, 0.25, 0.3), at = Vector3.new(-0.75, 3.4, -1.8), color = "body", g = "head" },
+			{
+				size = Vector3.new(0.3, 0.6, 0.25),
+				at = Vector3.new(0, 3.35, 1.55),
+				color = "accent",
+				rot = CFrame.Angles(rad(30), 0, 0),
+				g = "tail",
+			},
+		}, eyes(3.5, -2.62, 0.4, 0.2)),
 	},
 	vaca = {
 		crown = Vector3.new(0, 4.3, -2.6),
 		tag = 5.6,
-		parts = concat({
+		pet = 0.6,
+		joints = {
+			head = Vector3.new(0, 3.2, -1.9),
+			tail = Vector3.new(0, 3.3, 2.05),
+		},
+		parts = concat(legs(Vector3.new(0.55, 1.5, 0.55), 0.9, 1.4, "body"), {
 			{ size = Vector3.new(2.6, 2.2, 4.0), at = Vector3.new(0, 2.6, 0), color = "body" },
 			{ size = Vector3.new(0.1, 1.0, 1.3), at = Vector3.new(1.31, 2.8, 0.5), color = "accent" },
 			{ size = Vector3.new(0.1, 0.9, 1.1), at = Vector3.new(-1.31, 2.4, -0.8), color = "accent" },
 			{ size = Vector3.new(1.2, 0.1, 1.0), at = Vector3.new(0.3, 3.71, 0.9), color = "accent" },
-			{ size = Vector3.new(1.6, 1.6, 1.6), at = Vector3.new(0, 3.3, -2.6), color = "body" },
-			{ size = Vector3.new(1.4, 0.8, 0.5), at = Vector3.new(0, 2.85, -3.55), color = "muzzle" },
-			{ size = Vector3.new(0.25, 0.6, 0.25), at = Vector3.new(0.6, 4.35, -2.6), color = "horn" },
-			{ size = Vector3.new(0.25, 0.6, 0.25), at = Vector3.new(-0.6, 4.35, -2.6), color = "horn" },
-			{ size = Vector3.new(0.6, 0.3, 0.2), at = Vector3.new(1.05, 3.7, -2.5), color = "accent" },
-			{ size = Vector3.new(0.6, 0.3, 0.2), at = Vector3.new(-1.05, 3.7, -2.5), color = "accent" },
+			{ size = Vector3.new(1.6, 1.6, 1.6), at = Vector3.new(0, 3.3, -2.6), color = "body", g = "head" },
+			{ size = Vector3.new(1.4, 0.8, 0.5), at = Vector3.new(0, 2.85, -3.55), color = "muzzle", g = "head" },
+			{ size = Vector3.new(0.25, 0.6, 0.25), at = Vector3.new(0.6, 4.35, -2.6), color = "horn", g = "head" },
+			{ size = Vector3.new(0.25, 0.6, 0.25), at = Vector3.new(-0.6, 4.35, -2.6), color = "horn", g = "head" },
+			{ size = Vector3.new(0.6, 0.3, 0.2), at = Vector3.new(1.05, 3.7, -2.5), color = "accent", g = "head" },
+			{ size = Vector3.new(0.6, 0.3, 0.2), at = Vector3.new(-1.05, 3.7, -2.5), color = "accent", g = "head" },
 			{
 				size = Vector3.one * 0.5,
 				at = Vector3.new(0, 2.25, -2.25),
 				color = "bell",
 				shape = "Ball",
 				material = Enum.Material.Metal,
+				g = "head",
 			},
-			{ size = Vector3.new(0.2, 1.4, 0.2), at = Vector3.new(0, 2.6, 2.05), color = "accent" },
-		}, eyes(3.55, -3.42, 0.45, 0.24), legs(Vector3.new(0.55, 1.5, 0.55), 0.9, 1.4, "body")),
+			{ size = Vector3.new(0.2, 1.4, 0.2), at = Vector3.new(0, 2.6, 2.05), color = "accent", g = "tail" },
+		}, eyes(3.55, -3.42, 0.45, 0.24)),
+	},
+	ovelha = {
+		crown = Vector3.new(0, 4.35, -1.6),
+		tag = 5.2,
+		pet = 0.7,
+		joints = {
+			head = Vector3.new(0, 2.7, -1.2),
+			tail = Vector3.new(0, 2.4, 1.7),
+		},
+		parts = concat(legs(Vector3.new(0.35, 1.3, 0.35), 0.6, 0.8, "accent"), {
+			{ size = Vector3.one * 2.6, at = Vector3.new(0, 2.3, 0), color = "body", shape = "Ball" },
+			{ size = Vector3.one * 1.9, at = Vector3.new(0.8, 2.4, 0.8), color = "body", shape = "Ball" },
+			{ size = Vector3.one * 1.9, at = Vector3.new(-0.8, 2.4, 0.8), color = "body", shape = "Ball" },
+			{ size = Vector3.one * 1.9, at = Vector3.new(0.8, 2.4, -0.7), color = "body", shape = "Ball" },
+			{ size = Vector3.one * 1.9, at = Vector3.new(-0.8, 2.4, -0.7), color = "body", shape = "Ball" },
+			{ size = Vector3.one * 2.0, at = Vector3.new(0, 3.1, 0.1), color = "body", shape = "Ball" },
+			{ size = Vector3.one * 1.7, at = Vector3.new(0, 2.3, 1.3), color = "body", shape = "Ball" },
+			{ size = Vector3.new(1.0, 1.2, 1.1), at = Vector3.new(0, 2.9, -1.75), color = "accent", g = "head" },
+			{ size = Vector3.one * 1.0, at = Vector3.new(0, 3.6, -1.6), color = "body", shape = "Ball", g = "head" },
+			{ size = Vector3.new(0.6, 0.25, 0.3), at = Vector3.new(0.65, 3.1, -1.6), color = "accent", g = "head" },
+			{ size = Vector3.new(0.6, 0.25, 0.3), at = Vector3.new(-0.65, 3.1, -1.6), color = "accent", g = "head" },
+			{ size = Vector3.one * 0.8, at = Vector3.new(0, 2.5, 2.0), color = "body", shape = "Ball", g = "tail" },
+		}, eyes(3.05, -2.3, 0.3, 0.22, "eye")),
+	},
+	coelho = {
+		crown = Vector3.new(0, 2.95, -0.55),
+		tag = 4.6,
+		pet = 0.85,
+		joints = {
+			head = Vector3.new(0, 1.8, -0.6),
+			tail = Vector3.new(0, 1.4, 1.2),
+		},
+		parts = concat({
+			{ size = Vector3.new(0.35, 0.6, 0.35), at = Vector3.new(-0.4, 0.3, -0.5), color = "body", g = "legFL" },
+			{ size = Vector3.new(0.35, 0.6, 0.35), at = Vector3.new(0.4, 0.3, -0.5), color = "body", g = "legFR" },
+			{ size = Vector3.new(0.45, 0.5, 1.0), at = Vector3.new(-0.55, 0.25, 0.7), color = "body", g = "legBL" },
+			{ size = Vector3.new(0.45, 0.5, 1.0), at = Vector3.new(0.55, 0.25, 0.7), color = "body", g = "legBR" },
+			{ size = Vector3.new(1.6, 1.5, 2.0), at = Vector3.new(0, 1.2, 0.2), color = "body" },
+			{ size = Vector3.new(1.2, 1.2, 1.2), at = Vector3.new(0, 2.2, -0.9), color = "body", g = "head" },
+			{
+				size = Vector3.new(0.4, 1.6, 0.2),
+				at = Vector3.new(0.3, 3.5, -0.9),
+				color = "body",
+				rot = CFrame.Angles(0, 0, rad(-10)),
+				g = "head",
+			},
+			{
+				size = Vector3.new(0.4, 1.6, 0.2),
+				at = Vector3.new(-0.3, 3.5, -0.9),
+				color = "body",
+				rot = CFrame.Angles(0, 0, rad(10)),
+				g = "head",
+			},
+			{
+				size = Vector3.new(0.22, 1.2, 0.05),
+				at = Vector3.new(0.31, 3.5, -1.02),
+				color = "accent",
+				rot = CFrame.Angles(0, 0, rad(-10)),
+				g = "head",
+			},
+			{
+				size = Vector3.new(0.22, 1.2, 0.05),
+				at = Vector3.new(-0.31, 3.5, -1.02),
+				color = "accent",
+				rot = CFrame.Angles(0, 0, rad(10)),
+				g = "head",
+			},
+			{ size = Vector3.new(0.3, 0.22, 0.1), at = Vector3.new(0, 2.15, -1.52), color = "accent", g = "head" },
+			{ size = Vector3.one * 0.7, at = Vector3.new(0, 1.4, 1.3), color = "tail", shape = "Ball", g = "tail" },
+		}, eyes(2.4, -1.5, 0.35, 0.2)),
 	},
 	cavalo = {
 		crown = Vector3.new(0, 6.75, -2.7),
 		tag = 7.8,
+		pet = 0.5,
+		joints = {
+			head = Vector3.new(0, 4.0, -1.5),
+			tail = Vector3.new(0, 4.2, 2.2),
+		},
 		parts = concat(
+			legs(Vector3.new(0.5, 2.3, 0.5), 0.7, 1.6, "body"),
+			hooves(Vector3.new(0.56, 0.3, 0.56), 0.7, 1.6, "hoof"),
 			{
 				{ size = Vector3.new(2.0, 2.2, 4.4), at = Vector3.new(0, 3.4, 0), color = "body" },
 				{
@@ -147,32 +413,102 @@ local SHAPES: { [string]: Shape } = {
 					at = Vector3.new(0, 4.9, -1.9),
 					color = "body",
 					rot = CFrame.Angles(rad(-25), 0, 0),
+					g = "head",
 				},
-				{ size = Vector3.new(1.0, 1.0, 2.0), at = Vector3.new(0, 6.0, -2.9), color = "body" },
+				{ size = Vector3.new(1.0, 1.0, 2.0), at = Vector3.new(0, 6.0, -2.9), color = "body", g = "head" },
 				{
 					size = Vector3.new(0.3, 2.4, 0.6),
 					at = Vector3.new(0, 5.2, -1.4),
 					color = "accent",
 					rot = CFrame.Angles(rad(-25), 0, 0),
+					g = "head",
 				},
-				{ size = Vector3.new(0.25, 0.5, 0.2), at = Vector3.new(0.3, 6.7, -2.4), color = "body" },
-				{ size = Vector3.new(0.25, 0.5, 0.2), at = Vector3.new(-0.3, 6.7, -2.4), color = "body" },
+				{ size = Vector3.new(0.25, 0.5, 0.2), at = Vector3.new(0.3, 6.7, -2.4), color = "body", g = "head" },
+				{ size = Vector3.new(0.25, 0.5, 0.2), at = Vector3.new(-0.3, 6.7, -2.4), color = "body", g = "head" },
 				{
 					size = Vector3.new(0.35, 1.9, 0.35),
 					at = Vector3.new(0, 3.2, 2.35),
 					color = "accent",
 					rot = CFrame.Angles(rad(20), 0, 0),
+					g = "tail",
 				},
 			},
-			eyes(6.2, -3.3, 0.52, 0.22),
-			legs(Vector3.new(0.5, 2.3, 0.5), 0.7, 1.6, "body"),
-			{
-				{ size = Vector3.new(0.56, 0.3, 0.56), at = Vector3.new(0.7, 0.15, 1.6), color = "hoof" },
-				{ size = Vector3.new(0.56, 0.3, 0.56), at = Vector3.new(-0.7, 0.15, 1.6), color = "hoof" },
-				{ size = Vector3.new(0.56, 0.3, 0.56), at = Vector3.new(0.7, 0.15, -1.6), color = "hoof" },
-				{ size = Vector3.new(0.56, 0.3, 0.56), at = Vector3.new(-0.7, 0.15, -1.6), color = "hoof" },
-			}
+			eyes(6.2, -3.3, 0.52, 0.22)
 		),
+	},
+	burro = {
+		crown = Vector3.new(0, 5.2, -2.4),
+		tag = 6.6,
+		pet = 0.55,
+		joints = {
+			head = Vector3.new(0, 3.3, -1.3),
+			tail = Vector3.new(0, 3.3, 1.7),
+		},
+		parts = concat(
+			legs(Vector3.new(0.45, 1.8, 0.45), 0.6, 1.3, "body"),
+			hooves(Vector3.new(0.5, 0.25, 0.5), 0.6, 1.3, "hoof"),
+			{
+				{ size = Vector3.new(1.8, 1.8, 3.4), at = Vector3.new(0, 2.7, 0), color = "body" },
+				{
+					size = Vector3.new(0.9, 1.8, 1.0),
+					at = Vector3.new(0, 3.8, -1.6),
+					color = "body",
+					rot = CFrame.Angles(rad(-25), 0, 0),
+					g = "head",
+				},
+				{ size = Vector3.new(0.9, 0.9, 1.7), at = Vector3.new(0, 4.6, -2.4), color = "body", g = "head" },
+				{ size = Vector3.new(0.95, 0.7, 0.6), at = Vector3.new(0, 4.4, -3.2), color = "muzzle", g = "head" },
+				{
+					size = Vector3.new(0.3, 1.4, 0.35),
+					at = Vector3.new(0.35, 5.6, -2.0),
+					color = "body",
+					rot = CFrame.Angles(0, 0, rad(-14)),
+					g = "head",
+				},
+				{
+					size = Vector3.new(0.3, 1.4, 0.35),
+					at = Vector3.new(-0.35, 5.6, -2.0),
+					color = "body",
+					rot = CFrame.Angles(0, 0, rad(14)),
+					g = "head",
+				},
+				{
+					size = Vector3.new(0.25, 1.6, 0.5),
+					at = Vector3.new(0, 4.1, -1.3),
+					color = "accent",
+					rot = CFrame.Angles(rad(-25), 0, 0),
+					g = "head",
+				},
+				{
+					size = Vector3.new(0.25, 1.5, 0.25),
+					at = Vector3.new(0, 2.6, 1.85),
+					color = "accent",
+					rot = CFrame.Angles(rad(20), 0, 0),
+					g = "tail",
+				},
+			},
+			eyes(4.85, -3.0, 0.45, 0.2)
+		),
+	},
+	alpaca = {
+		crown = Vector3.new(0, 7.55, -1.2),
+		tag = 8.2,
+		pet = 0.5,
+		joints = {
+			head = Vector3.new(0, 3.9, -1.0),
+			tail = Vector3.new(0, 3.7, 1.4),
+		},
+		parts = concat(legs(Vector3.new(0.5, 2.1, 0.5), 0.6, 1.0, "body"), {
+			{ size = Vector3.new(1.9, 1.9, 2.8), at = Vector3.new(0, 3.0, 0), color = "body" },
+			{ size = Vector3.one * 1.6, at = Vector3.new(0, 3.7, 0.5), color = "body", shape = "Ball" },
+			{ size = Vector3.new(0.9, 2.6, 0.9), at = Vector3.new(0, 4.9, -1.1), color = "body", g = "head" },
+			{ size = Vector3.new(0.9, 1.0, 1.2), at = Vector3.new(0, 6.4, -1.3), color = "body", g = "head" },
+			{ size = Vector3.new(0.6, 0.5, 0.4), at = Vector3.new(0, 6.2, -2.05), color = "muzzle", g = "head" },
+			{ size = Vector3.one * 0.9, at = Vector3.new(0, 7.0, -1.2), color = "body", shape = "Ball", g = "head" },
+			{ size = Vector3.new(0.25, 0.7, 0.2), at = Vector3.new(0.32, 7.1, -1.05), color = "accent", g = "head" },
+			{ size = Vector3.new(0.25, 0.7, 0.2), at = Vector3.new(-0.32, 7.1, -1.05), color = "accent", g = "head" },
+			{ size = Vector3.new(0.6, 0.8, 0.5), at = Vector3.new(0, 3.6, 1.55), color = "body", g = "tail" },
+		}, eyes(6.55, -1.92, 0.35, 0.2)),
 	},
 }
 
@@ -182,7 +518,8 @@ local function addPart(
 	spec: PartSpec,
 	scale: number,
 	color: Color3,
-	shiny: boolean
+	shiny: boolean,
+	pivot: Vector3?
 ): BasePart
 	local part = Instance.new("Part")
 	part.Size = spec.size * scale
@@ -199,11 +536,24 @@ local function addPart(
 	part.CanQuery = false
 	part.CanTouch = false
 	part.Massless = true
-	part.CFrame = root.CFrame * CFrame.new(spec.at * scale) * (spec.rot or CFrame.identity)
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = root
-	weld.Part1 = part
-	weld.Parent = part
+	local relative = CFrame.new(spec.at * scale) * (spec.rot or CFrame.identity)
+	part.CFrame = root.CFrame * relative
+	if spec.g and pivot then
+		-- Junta animável: gira em volta do pivô (ombro, pescoço, base do rabo).
+		local at = CFrame.new(pivot * scale)
+		local motor = Instance.new("Motor6D")
+		motor.Name = spec.g
+		motor.Part0 = root
+		motor.Part1 = part
+		motor.C0 = at
+		motor.C1 = relative:Inverse() * at
+		motor.Parent = part
+	else
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = root
+		weld.Part1 = part
+		weld.Parent = part
+	end
 	part.Parent = model
 	return part
 end
@@ -340,6 +690,14 @@ function AnimalModel.build(speciesId: string, rarity: number, shiny: boolean, di
 	root.Parent = model
 	model.PrimaryPart = root
 
+	-- Pivô de cada junta: patas giram no topo da primeira peça do grupo; o resto vem de joints.
+	local pivots: { [string]: Vector3 } = table.clone(shape.joints)
+	for _, spec in shape.parts do
+		if spec.g and not pivots[spec.g] then
+			pivots[spec.g] = spec.at + Vector3.new(0, spec.size.Y / 2, 0)
+		end
+	end
+
 	for _, spec in shape.parts do
 		local color: Color3 = if typeof(spec.color) == "Color3"
 			then spec.color :: Color3
@@ -353,7 +711,7 @@ function AnimalModel.build(speciesId: string, rarity: number, shiny: boolean, di
 		elseif fancy and isAccent then
 			color = color:Lerp(rarityInfo.color, ACCENT_TINT[rarity] or 0)
 		end
-		local part = addPart(model, root, spec, scale, color, shiny and spec.color == "body")
+		local part = addPart(model, root, spec, scale, color, shiny and spec.color == "body", if spec.g then pivots[spec.g] else nil)
 		-- Lendário: detalhes brilhando. Mítico: detalhes em arco-íris.
 		if fancy and isAccent and rarity >= Rarities.LEGENDARY then
 			part.Material = Enum.Material.Neon
@@ -394,7 +752,16 @@ function AnimalModel.build(speciesId: string, rarity: number, shiny: boolean, di
 	end
 
 	addNameTag(root, shape.tag * scale, displayName, rarityInfo.color)
+	-- O cliente anima todo modelo com esta tag (patas andando, cabeça, rabo).
+	model:SetAttribute("Especie", speciesId)
+	CollectionService:AddTag(model, AnimalModel.ANIMATED_TAG)
 	return model
+end
+
+-- Tamanho do bicho quando anda atrás do jogador como pet.
+function AnimalModel.petScale(speciesId: string): number
+	local species = Species.byId[speciesId]
+	return SHAPES[species.shape].pet
 end
 
 return AnimalModel
@@ -430,6 +797,22 @@ Balance.BOOTS_SPEED = 3
 Balance.BASKET_BASE = 20
 Balance.BASKET_PER_LEVEL = 10
 Balance.NET_CHANCE_PER_LEVEL = 0.5
+-- Pets: até 3 equipados (+1 por renascimento, até +3). O bônus do bicho cresce com a raridade.
+Balance.PET_SLOTS = 3
+Balance.PET_BUFF_MULT = { 1, 1.6, 2.5, 4, 6.5, 10 }
+Balance.SHINY_BUFF_MULT = 1.5
+-- Renascer: zera o progresso da fazenda em troca de bônus permanentes.
+Balance.REBIRTH_BASE = 250000
+Balance.REBIRTH_GROWTH = 3
+Balance.REBIRTH_COIN_BONUS = 0.5
+Balance.REBIRTH_LUCK_BONUS = 0.1
+Balance.REBIRTH_MAX_SLOTS = 3
+Balance.REBIRTH_ROUTE = "Pasto"
+-- Índice: a cada 5 descobertas, +2% de moedas para sempre.
+Balance.INDEX_STEP = 5
+Balance.INDEX_BONUS = 2
+-- Esteira Turbo: cada nível dá +75% do treino base.
+Balance.TREADMILL_PER_LEVEL = 0.75
 
 -- Custo para subir da raridade [i] para i+1: { comum, incomum, raro, cristais, moedas (x base da espécie) }
 local EVOLVE_STEPS = {
@@ -457,12 +840,77 @@ function Balance.animalProduction(animal: Animal): number
 	return species.base * rarity.mult * (if animal.shiny then Balance.SHINY_MULT else 1)
 end
 
+function Balance.petSlots(profile): number
+	return Balance.PET_SLOTS + math.min(profile.rebirths or 0, Balance.REBIRTH_MAX_SLOTS)
+end
+
+-- Bônus de um bicho equipado: (stat, valor). Ex.: ("Velocidade", 2).
+function Balance.buffOf(animal: Animal): (string, number)
+	local species = Species.byId[animal.species]
+	local value = species.buff.amount
+		* (Balance.PET_BUFF_MULT[animal.rarity] or 1)
+		* (if animal.shiny then Balance.SHINY_BUFF_MULT else 1)
+	return species.buff.stat, math.floor(value * 10 + 0.5) / 10
+end
+
+function Balance.isEquipped(profile, animalId: string): boolean
+	return profile.equipped ~= nil and table.find(profile.equipped, animalId) ~= nil
+end
+
+-- Soma dos bônus dos pets equipados: { Velocidade, Sorte, Cesta, Moedas, Treino }.
+function Balance.petBonus(profile): { [string]: number }
+	local bonus = { Velocidade = 0, Sorte = 0, Cesta = 0, Moedas = 0, Treino = 0 }
+	if not profile.equipped or #profile.equipped == 0 then
+		return bonus
+	end
+	for _, animal in profile.animals do
+		if table.find(profile.equipped, animal.id) then
+			local stat, value = Balance.buffOf(animal)
+			bonus[stat] += value
+		end
+	end
+	return bonus
+end
+
+function Balance.indexCount(profile): number
+	local count = 0
+	for _ in profile.index or {} do
+		count += 1
+	end
+	return count
+end
+
+-- % extra de moedas vindo do índice.
+function Balance.indexBonus(profile): number
+	return math.floor(Balance.indexCount(profile) / Balance.INDEX_STEP) * Balance.INDEX_BONUS
+end
+
+-- Multiplicador de moedas: pets (Moedas%), índice e renascimentos.
+function Balance.coinMultiplier(profile): number
+	local percent = Balance.petBonus(profile).Moedas + Balance.indexBonus(profile)
+	return (1 + percent / 100) * (1 + Balance.REBIRTH_COIN_BONUS * (profile.rebirths or 0))
+end
+
 function Balance.totalProduction(profile, hasVip: boolean): number
 	local total = 0
 	for _, animal in profile.animals do
 		total += Balance.animalProduction(animal)
 	end
-	return total * (if hasVip then Balance.VIP_COIN_MULT else 1)
+	return total * Balance.coinMultiplier(profile) * (if hasVip then Balance.VIP_COIN_MULT else 1)
+end
+
+function Balance.rebirthCost(profile): number
+	return math.floor(Balance.REBIRTH_BASE * Balance.REBIRTH_GROWTH ^ (profile.rebirths or 0))
+end
+
+function Balance.canRebirth(profile, coins: number): (boolean, string?)
+	if not profile.routes[Balance.REBIRTH_ROUTE] then
+		return false, "Libere a Rota do Pasto primeiro"
+	end
+	if coins < Balance.rebirthCost(profile) then
+		return false, "Moedas insuficientes"
+	end
+	return true, nil
 end
 
 function Balance.capacity(profile, hasGiantFarm: boolean): number
@@ -472,7 +920,9 @@ function Balance.capacity(profile, hasGiantFarm: boolean): number
 end
 
 function Balance.luck(profile, hasLuckPass: boolean, goldenHour: boolean): number
-	local luck = 1 + Balance.LUCK_PER_LEVEL * (profile.upgrades.Sorte or 0)
+	local luck = (1 + Balance.LUCK_PER_LEVEL * (profile.upgrades.Sorte or 0))
+		* (1 + Balance.petBonus(profile).Sorte / 100)
+		* (1 + Balance.REBIRTH_LUCK_BONUS * (profile.rebirths or 0))
 	if hasLuckPass then
 		luck *= 2
 	end
@@ -482,9 +932,14 @@ function Balance.luck(profile, hasLuckPass: boolean, goldenHour: boolean): numbe
 	return luck
 end
 
--- Pontos de treino por segundo: Esteira Turbo multiplica (nv 1 = x2, nv 2 = x3…).
+-- Pontos de treino por segundo: cada nível da Esteira Turbo soma +75% e os pets de treino somam %.
+function Balance.trainGainAt(profile, level: number): number
+	local pets = 1 + Balance.petBonus(profile).Treino / 100
+	return math.floor(Balance.TRAIN_GAIN * (1 + Balance.TREADMILL_PER_LEVEL * level) * pets)
+end
+
 function Balance.trainGain(profile): number
-	return Balance.TRAIN_GAIN * (1 + (profile.upgrades.Esteira or 0))
+	return Balance.trainGainAt(profile, profile.upgrades.Esteira or 0)
 end
 
 -- Devolve (nível, pontos dentro do nível, custo do próximo nível).
@@ -507,7 +962,10 @@ function Balance.trainedSpeed(profile): number
 end
 
 function Balance.walkSpeed(profile): number
-	return Balance.BASE_SPEED + Balance.BOOTS_SPEED * (profile.upgrades.Velocidade or 0) + Balance.trainedSpeed(profile)
+	return Balance.BASE_SPEED
+		+ Balance.BOOTS_SPEED * (profile.upgrades.Velocidade or 0)
+		+ Balance.trainedSpeed(profile)
+		+ math.floor(Balance.petBonus(profile).Velocidade)
 end
 
 -- Pulos no ar além do normal (nv 1 = duplo, nv 2 = triplo).
@@ -521,7 +979,7 @@ function Balance.jumpHeight(profile): number
 end
 
 function Balance.basketCapacity(profile): number
-	return Balance.BASKET_BASE + Balance.BASKET_PER_LEVEL * (profile.upgrades.Cesta or 0)
+	return Balance.BASKET_BASE + Balance.BASKET_PER_LEVEL * (profile.upgrades.Cesta or 0) + math.floor(Balance.petBonus(profile).Cesta)
 end
 
 -- Itens a mais da Rede: cada 4 níveis garante +1; o resto é chance de +1.
@@ -731,7 +1189,10 @@ return Materials
 --   "upgrade" nível do upgrade `id` ≥ goal
 --   "animal"  ter a espécie `id` com raridade ≥ goal
 --   "route"   rota `id` liberada
--- hint: para onde o guia aponta ("rota", "esteira", "loja", "rotas", "animais", "tesouro").
+--   "equipped" ter pelo menos goal pets equipados
+--   "rebirth" ter renascido goal vezes
+-- hint: para onde o guia aponta ("rota", "esteira", "placa", "loja", "rotas", "animais", "pet",
+-- "tesouro", "corrida", "ovo", "chefe", "casa").
 export type Mission = {
 	text: string,
 	kind: string,
@@ -749,12 +1210,14 @@ Missions.list = {
 	{ text = "Leve a cesta para casa", kind = "stat", stat = "deposited", goal = 1, reward = 40, hint = "casa" },
 	{ text = "Abra 1 ninho no 🥚 Ninhal", kind = "stat", stat = "nests", goal = 1, reward = 60, hint = "rota" },
 	{ text = "🐣 Choque seu ovo na Chocadeira", kind = "stat", stat = "hatched", goal = 1, reward = 60, hint = "ovo" },
+	{ text = "🐾 Equipe um bicho como pet", kind = "equipped", goal = 1, reward = 80, hint = "pet" },
 	{ text = "Evolua um animal", kind = "stat", stat = "evolved", goal = 1, reward = 80, hint = "animais" },
 	{ text = "Treine na esteira até ⚡20", kind = "speed", goal = 20, reward = 100, hint = "esteira" },
 	{ text = "Compre as 👢 Botas Rápidas", kind = "upgrade", id = "Velocidade", goal = 1, reward = 120, hint = "loja" },
 	{ text = "👊 Derrube o Galo Bravo (3 golpes)", kind = "stat", stat = "ko_Galinheiro", goal = 1, reward = 150, hint = "rota" },
 	{ text = "Colete 40 itens", kind = "stat", stat = "collected", goal = 40, reward = 150, hint = "rota" },
 	{ text = "Tenha uma 🐔 Galinha Rara", kind = "animal", id = "Galinha", goal = 3, reward = 200, hint = "animais" },
+	{ text = "🐾 Ande com 3 pets", kind = "equipped", goal = 3, reward = 250, hint = "pet" },
 	{ text = "⚔️ Ajude a derrotar um Chefão", kind = "stat", stat = "bosses", goal = 1, reward = 400, hint = "chefe" },
 	{ text = "Treine até ⚡28 para fugir do Porco", kind = "speed", goal = 28, reward = 250, hint = "esteira" },
 	{ text = "Libere a Rota do Chiqueiro", kind = "route", id = "Chiqueiro", goal = 1, reward = 300, hint = "rotas" },
@@ -762,16 +1225,20 @@ Missions.list = {
 	{ text = "Compre as 🦘 Botas de Pulo", kind = "upgrade", id = "Pulo", goal = 1, reward = 350, hint = "loja" },
 	{ text = "💎 Suba na árvore e abra o Baú do Tesouro", kind = "stat", stat = "chests", goal = 1, reward = 500, hint = "tesouro" },
 	{ text = "💎 Abra o Baú do Tesouro do Chiqueiro", kind = "stat", stat = "chest_Chiqueiro", goal = 1, reward = 600, hint = "tesouro" },
-	{ text = "Compre a 🏃 Esteira Turbo", kind = "upgrade", id = "Esteira", goal = 1, reward = 400, hint = "loja" },
+	{ text = "⚡ Melhore a esteira na placa ao lado dela", kind = "upgrade", id = "Esteira", goal = 1, reward = 400, hint = "placa" },
 	{ text = "Evolua 5 vezes", kind = "stat", stat = "evolved", goal = 5, reward = 800, hint = "animais" },
 	{ text = "Treine até ⚡35", kind = "speed", goal = 35, reward = 900, hint = "esteira" },
 	{ text = "Libere a Rota do Pasto", kind = "route", id = "Pasto", goal = 1, reward = 1500, hint = "rotas" },
+	{ text = "🐄 Escape de um Estouro da Boiada no Pasto", kind = "stat", stat = "stampedes", goal = 1, reward = 1600, hint = "rota" },
 	{ text = "💎 Abra o Baú do Tesouro do Pasto", kind = "stat", stat = "chest_Pasto", goal = 1, reward = 1800, hint = "tesouro" },
 	{ text = "Abra 10 ninhos", kind = "stat", stat = "nests", goal = 10, reward = 2000, hint = "rota" },
 	{ text = "Consiga um animal Lendário", kind = "stat", stat = "legendaries", goal = 1, reward = 5000, hint = "animais" },
 	{ text = "Libere a Rota da Pradaria", kind = "route", id = "Pradaria", goal = 1, reward = 8000, hint = "rotas" },
+	{ text = "🏇 Vença a Corrida a Cavalo na Pradaria", kind = "stat", stat = "races", goal = 1, reward = 9000, hint = "corrida" },
+	{ text = "⚡ Deixe a esteira no nível 5", kind = "upgrade", id = "Esteira", goal = 5, reward = 9000, hint = "placa" },
 	{ text = "💎 Abra o Baú do Tesouro da Pradaria", kind = "stat", stat = "chest_Pradaria", goal = 1, reward = 10000, hint = "tesouro" },
 	{ text = "💎 Abra 10 Baús do Tesouro", kind = "stat", stat = "chests", goal = 10, reward = 15000, hint = "tesouro" },
+	{ text = "♻️ Renasça pela 1ª vez (na 🛒 Loja)", kind = "rebirth", goal = 1, reward = 25000, hint = "loja" },
 } :: { Mission }
 
 -- Depois da lista: missões infinitas de coleta, cada vez maiores.
@@ -931,18 +1398,30 @@ local Sounds = {
 }
 
 return Sounds
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000009"><Properties><string name="Name">Species</string><ProtectedString name="Source"><![CDATA[-- base = moedas por segundo de um animal Comum. materials = {comum, incomum, raro} usados na evolução.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000009"><Properties><string name="Name">Species</string><ProtectedString name="Source"><![CDATA[-- base = moedas por segundo de um animal Comum. materials = {comum, incomum, raro} usados na evolução
+-- (todos os bichos de uma rota usam os materiais dela).
+-- buff = bônus que o bicho dá quando está equipado como pet (ver Balance.petBonus):
+--   Velocidade (+⚡), Sorte (+%), Cesta (+itens), Moedas (+%), Treino (+%).
+-- route/chance = em qual rota o ninho pode dar esse bicho e com que peso.
 local Species = {}
+
+local ROUTE_MATERIALS = {
+	Galinheiro = { "Semente", "Pena", "PenaDourada" },
+	Chiqueiro = { "Cenoura", "Abobora", "Trufa" },
+	Pasto = { "Capim", "Trevo", "TrevoDaSorte" },
+	Pradaria = { "Feno", "Maca", "FerraduraDourada" },
+}
 
 Species.byId = {
 	Galinha = {
-		id = "Galinha",
 		name = "Galinha",
 		feminine = true,
 		emoji = "🐔",
 		base = 1,
 		shape = "ave",
-		materials = { "Semente", "Pena", "PenaDourada" },
+		route = "Galinheiro",
+		chance = 60,
+		buff = { stat = "Moedas", amount = 5 },
 		palette = {
 			body = Color3.fromRGB(248, 246, 238),
 			accent = Color3.fromRGB(228, 222, 208),
@@ -950,27 +1429,96 @@ Species.byId = {
 			red = Color3.fromRGB(225, 45, 45),
 		},
 	},
+	Pato = {
+		name = "Pato",
+		feminine = false,
+		emoji = "🦆",
+		base = 1.5,
+		shape = "pato",
+		route = "Galinheiro",
+		chance = 30,
+		buff = { stat = "Velocidade", amount = 1 },
+		palette = {
+			body = Color3.fromRGB(250, 250, 244),
+			accent = Color3.fromRGB(215, 222, 230),
+			head = Color3.fromRGB(45, 145, 80),
+			beak = Color3.fromRGB(255, 165, 35),
+		},
+	},
+	Peru = {
+		name = "Peru",
+		feminine = false,
+		emoji = "🦃",
+		base = 2.5,
+		shape = "peru",
+		route = "Galinheiro",
+		chance = 10,
+		buff = { stat = "Sorte", amount = 5 },
+		palette = {
+			body = Color3.fromRGB(125, 82, 50),
+			accent = Color3.fromRGB(170, 115, 65),
+			tip = Color3.fromRGB(240, 215, 150),
+			skin = Color3.fromRGB(215, 95, 95),
+			beak = Color3.fromRGB(235, 195, 125),
+			red = Color3.fromRGB(220, 40, 40),
+		},
+	},
 	Porco = {
-		id = "Porco",
 		name = "Porco",
 		feminine = false,
 		emoji = "🐷",
 		base = 6,
 		shape = "porco",
-		materials = { "Cenoura", "Abobora", "Trufa" },
+		route = "Chiqueiro",
+		chance = 60,
+		buff = { stat = "Cesta", amount = 4 },
 		palette = {
 			body = Color3.fromRGB(255, 172, 188),
 			accent = Color3.fromRGB(238, 128, 152),
 		},
 	},
+	Javali = {
+		name = "Javali",
+		feminine = false,
+		emoji = "🐗",
+		base = 9,
+		shape = "javali",
+		route = "Chiqueiro",
+		chance = 30,
+		buff = { stat = "Velocidade", amount = 1.5 },
+		palette = {
+			body = Color3.fromRGB(118, 82, 56),
+			accent = Color3.fromRGB(62, 42, 30),
+			muzzle = Color3.fromRGB(96, 66, 46),
+			nose = Color3.fromRGB(60, 40, 40),
+			tusk = Color3.fromRGB(250, 245, 230),
+		},
+	},
+	Bode = {
+		name = "Bode",
+		feminine = false,
+		emoji = "🐐",
+		base = 13,
+		shape = "bode",
+		route = "Chiqueiro",
+		chance = 10,
+		buff = { stat = "Treino", amount = 10 },
+		palette = {
+			body = Color3.fromRGB(238, 232, 215),
+			accent = Color3.fromRGB(125, 98, 72),
+			muzzle = Color3.fromRGB(215, 195, 180),
+			horn = Color3.fromRGB(165, 152, 130),
+		},
+	},
 	Vaca = {
-		id = "Vaca",
 		name = "Vaca",
 		feminine = true,
 		emoji = "🐮",
 		base = 35,
 		shape = "vaca",
-		materials = { "Capim", "Trevo", "TrevoDaSorte" },
+		route = "Pasto",
+		chance = 60,
+		buff = { stat = "Moedas", amount = 8 },
 		palette = {
 			body = Color3.fromRGB(246, 246, 246),
 			accent = Color3.fromRGB(35, 35, 35),
@@ -979,23 +1527,136 @@ Species.byId = {
 			bell = Color3.fromRGB(255, 200, 50),
 		},
 	},
+	Ovelha = {
+		name = "Ovelha",
+		feminine = true,
+		emoji = "🐑",
+		base = 50,
+		shape = "ovelha",
+		route = "Pasto",
+		chance = 30,
+		buff = { stat = "Sorte", amount = 8 },
+		palette = {
+			body = Color3.fromRGB(252, 252, 246),
+			accent = Color3.fromRGB(70, 64, 64),
+			eye = Color3.fromRGB(245, 245, 245),
+		},
+	},
+	Coelho = {
+		name = "Coelho",
+		feminine = false,
+		emoji = "🐰",
+		base = 75,
+		shape = "coelho",
+		route = "Pasto",
+		chance = 10,
+		buff = { stat = "Velocidade", amount = 2 },
+		palette = {
+			body = Color3.fromRGB(205, 180, 152),
+			accent = Color3.fromRGB(255, 170, 190),
+			tail = Color3.fromRGB(252, 252, 252),
+		},
+	},
 	Cavalo = {
-		id = "Cavalo",
 		name = "Cavalo",
 		feminine = false,
 		emoji = "🐴",
 		base = 200,
 		shape = "cavalo",
-		materials = { "Feno", "Maca", "FerraduraDourada" },
+		route = "Pradaria",
+		chance = 60,
+		buff = { stat = "Velocidade", amount = 3 },
 		palette = {
 			body = Color3.fromRGB(150, 98, 55),
 			accent = Color3.fromRGB(60, 40, 25),
 			hoof = Color3.fromRGB(45, 40, 38),
 		},
 	},
+	Burro = {
+		name = "Burro",
+		feminine = false,
+		emoji = "🫏",
+		base = 290,
+		shape = "burro",
+		route = "Pradaria",
+		chance = 30,
+		buff = { stat = "Cesta", amount = 12 },
+		palette = {
+			body = Color3.fromRGB(150, 145, 140),
+			accent = Color3.fromRGB(80, 75, 72),
+			muzzle = Color3.fromRGB(235, 230, 225),
+			hoof = Color3.fromRGB(50, 45, 45),
+		},
+	},
+	Alpaca = {
+		name = "Alpaca",
+		feminine = true,
+		emoji = "🦙",
+		base = 420,
+		shape = "alpaca",
+		route = "Pradaria",
+		chance = 10,
+		buff = { stat = "Treino", amount = 25 },
+		palette = {
+			body = Color3.fromRGB(242, 226, 192),
+			accent = Color3.fromRGB(135, 92, 62),
+			muzzle = Color3.fromRGB(218, 192, 160),
+		},
+	},
 }
 
-Species.order = { "Galinha", "Porco", "Vaca", "Cavalo" }
+Species.order = {
+	"Galinha",
+	"Pato",
+	"Peru",
+	"Porco",
+	"Javali",
+	"Bode",
+	"Vaca",
+	"Ovelha",
+	"Coelho",
+	"Cavalo",
+	"Burro",
+	"Alpaca",
+}
+
+-- Bichos de cada rota, na ordem (o primeiro é o "principal", usado nos requisitos de rota).
+Species.byRoute = {} :: { [string]: { string } }
+
+for _, id in Species.order do
+	local species = Species.byId[id]
+	species.id = id
+	species.materials = ROUTE_MATERIALS[species.route]
+	Species.byRoute[species.route] = Species.byRoute[species.route] or {}
+	table.insert(Species.byRoute[species.route], id)
+end
+
+-- Sorteia qual bicho sai de um ninho da rota (roll entre 0 e 1).
+function Species.roll(routeId: string, roll: number): string
+	local list = Species.byRoute[routeId]
+	local total = 0
+	for _, id in list do
+		total += Species.byId[id].chance
+	end
+	local cursor = roll * total
+	for _, id in list do
+		cursor -= Species.byId[id].chance
+		if cursor <= 0 then
+			return id
+		end
+	end
+	return list[#list]
+end
+
+-- Nome e emoji de cada bônus de pet.
+Species.buffs = {
+	Velocidade = { emoji = "⚡", label = "velocidade", suffix = "" },
+	Sorte = { emoji = "🍀", label = "sorte", suffix = "%" },
+	Cesta = { emoji = "🧺", label = "cesta", suffix = "" },
+	Moedas = { emoji = "💰", label = "moedas", suffix = "%" },
+	Treino = { emoji = "🏃", label = "treino", suffix = "%" },
+}
+Species.buffOrder = { "Velocidade", "Sorte", "Moedas", "Cesta", "Treino" }
 
 return Species
 ]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000A"><Properties><string name="Name">Upgrades</string><ProtectedString name="Source"><![CDATA[local Upgrades = {}
@@ -1050,10 +1711,10 @@ Upgrades.byId = {
 		id = "Esteira",
 		name = "Esteira Turbo",
 		emoji = "🏃",
-		desc = "Treina muito mais rápido na esteira",
-		max = 4,
-		baseCost = 200,
-		growth = 2.6,
+		desc = "Treina muito mais rápido na esteira (+75% por nível)",
+		max = 10,
+		baseCost = 150,
+		growth = 2,
 	},
 	Pulo = {
 		id = "Pulo",
@@ -1231,13 +1892,16 @@ end
 
 return Style
 ]]></ProtectedString></Properties></Item></Item></Item>
-<Item class="ServerScriptService" referent="RBX00000024"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000023"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+<Item class="ServerScriptService" referent="RBX0000002A"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000029"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Services = script.Services
 local ActionService = require(Services.ActionService)
 local Basket = require(Services.Basket)
 local BossService = require(Services.BossService)
 local BoostService = require(Services.BoostService)
+local DailyService = require(Services.DailyService)
 local DataService = require(Services.DataService)
 local EggService = require(Services.EggService)
 local EquipmentService = require(Services.EquipmentService)
@@ -1246,14 +1910,20 @@ local GuardianService = require(Services.GuardianService)
 local MapBuilder = require(Services.MapBuilder)
 local Notify = require(Services.Notify)
 local PassService = require(Services.PassService)
+local PetService = require(Services.PetService)
+local RaceService = require(Services.RaceService)
+local RebirthService = require(Services.RebirthService)
 local RouteService = require(Services.RouteService)
 local MissionService = require(Services.MissionService)
+local StampedeService = require(Services.StampedeService)
 local TrainingService = require(Services.TrainingService)
 local TreasureService = require(Services.TreasureService)
+local UpgradeService = require(Services.UpgradeService)
 
 local map = MapBuilder.build()
 DataService.init()
 PassService.init()
+PetService.init()
 FarmService.init(map.plots)
 RouteService.init(map.zones, map.portals)
 GuardianService.init(map.zones)
@@ -1267,8 +1937,69 @@ EquipmentService.init()
 EggService.init()
 TreasureService.init(map.zones)
 TrainingService.init(map.plots)
+StampedeService.init(map.zones)
+RaceService.init(map.zones)
 MissionService.init()
 ActionService.init()
+
+-- Placa da esteira acompanha compras, pets e renascimento.
+UpgradeService.onBought = function(player, upgradeId)
+	if upgradeId == "Esteira" then
+		TrainingService.refreshBoard(player)
+	end
+end
+FarmService.onBonusChanged = TrainingService.refreshBoard
+FarmService.onPlotReleased = TrainingService.clearBoard
+RebirthService.onRebirth = function(player)
+	TrainingService.setup(player)
+end
+
+-- Só no Studio: atributos para testar eventos na hora.
+if RunService:IsStudio() then
+	-- Acesso aos serviços para testes pelo Studio (não existe no jogo publicado):
+	-- ServerStorage.Teste:Invoke("Farm", "equipBest", ...) chama FarmService.equipBest(jogador, ...);
+	-- Invoke("perfil") devolve o perfil do primeiro jogador.
+	local api = {
+		Data = DataService,
+		Farm = FarmService,
+		Egg = EggService,
+		Pet = PetService,
+		Race = RaceService,
+		Rebirth = RebirthService,
+		Stampede = StampedeService,
+		Training = TrainingService,
+		Upgrade = UpgradeService,
+		Guardian = GuardianService,
+	}
+	local test = Instance.new("BindableFunction")
+	test.Name = "Teste"
+	test.OnInvoke = function(service: string, fn: string?, ...)
+		local player = Players:GetPlayers()[1]
+		if service == "perfil" then
+			return DataService.get(player)
+		elseif service == "zona" then
+			return map.zones[fn].origin
+		elseif service == "set" then
+			-- Invoke("set", "routes.Pradaria", true)
+			local target = DataService.get(player)
+			local keys = string.split(fn :: string, ".")
+			for i = 1, #keys - 1 do
+				target = target[keys[i]]
+			end
+			target[keys[#keys]] = (...)
+			DataService.push(player)
+			return true
+		end
+		return api[service][fn :: string](player, ...)
+	end
+	test.Parent = game:GetService("ServerStorage")
+	Workspace:GetAttributeChangedSignal("ForcarEstouro"):Connect(function()
+		if Workspace:GetAttribute("ForcarEstouro") then
+			Workspace:SetAttribute("ForcarEstouro", nil)
+			StampedeService.force(map.zones)
+		end
+	end)
+end
 
 PassService.onGranted(function(player)
 	DataService.push(player)
@@ -1276,6 +2007,7 @@ end)
 
 local function onPlayerAdded(player: Player)
 	player.CharacterAdded:Connect(function(character)
+		RaceService.onCharacter(player)
 		FarmService.onCharacter(player, character)
 	end)
 
@@ -1289,7 +2021,8 @@ local function onPlayerAdded(player: Player)
 	end
 	FarmService.applyOfflineEarnings(player)
 	FarmService.assignPlot(player)
-	EggService.refresh(player)
+	EggService.setup(player)
+	PetService.refresh(player)
 	Basket.setup(player)
 	EquipmentService.refresh(player)
 	TrainingService.setup(player)
@@ -1297,6 +2030,7 @@ local function onPlayerAdded(player: Player)
 	if isNew then
 		FarmService.giveStarter(player)
 	end
+	DailyService.claim(player)
 	DataService.push(player)
 
 	if player.Character then
@@ -1327,23 +2061,23 @@ end
 
 Players.PlayerRemoving:Connect(function(player)
 	EggService.release(player)
+	PetService.release(player)
 	FarmService.releasePlot(player)
 	Basket.release(player)
 	DataService.release(player)
 end)
-]]></ProtectedString></Properties><Item class="Folder" referent="RBX00000022"><Properties><string name="Name">Services</string></Properties><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">ActionService</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+]]></ProtectedString></Properties><Item class="Folder" referent="RBX00000028"><Properties><string name="Name">Services</string></Properties><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">ActionService</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Remotes)
-local Upgrades = require(Shared.Config.Upgrades)
 
-local Basket = require(script.Parent.Basket)
 local DataService = require(script.Parent.DataService)
-local EquipmentService = require(script.Parent.EquipmentService)
 local FarmService = require(script.Parent.FarmService)
 local PassService = require(script.Parent.PassService)
+local RebirthService = require(script.Parent.RebirthService)
 local RouteService = require(script.Parent.RouteService)
+local UpgradeService = require(script.Parent.UpgradeService)
 
 local ActionService = {}
 
@@ -1352,39 +2086,16 @@ local RATE_LIMIT = 8
 
 type Handler = (Player, string) -> (boolean, any)
 
-local function buyUpgrade(player: Player, upgradeId: string): (boolean, string?)
-	local def = Upgrades.byId[upgradeId]
-	if not def then
-		return false, "Melhoria inválida"
-	end
-	local profile = DataService.get(player)
-	local level = profile.upgrades[upgradeId] or 0
-	if level >= def.max then
-		return false, "Nível máximo!"
-	end
-	if not DataService.spendCoins(player, Upgrades.cost(upgradeId, level)) then
-		return false, "Moedas insuficientes"
-	end
-	profile.upgrades[upgradeId] = level + 1
-	if upgradeId == "Velocidade" or upgradeId == "Pulo" then
-		FarmService.applySpeed(player)
-	elseif upgradeId == "Cesta" then
-		Basket.refresh(player)
-	elseif upgradeId == "Fazenda" then
-		FarmService.decorate(player)
-	end
-	EquipmentService.refresh(player)
-	DataService.push(player)
-	return true, def.emoji .. " " .. def.name .. " nível " .. (level + 1) .. "!"
-end
-
 local HANDLERS: { [string]: Handler } = {
 	GetProfile = function(player)
 		return true, DataService.get(player)
 	end,
 	Evolve = FarmService.evolve,
 	Sell = FarmService.sell,
-	BuyUpgrade = buyUpgrade,
+	BuyUpgrade = UpgradeService.buy,
+	Equip = FarmService.equip,
+	EquipBest = FarmService.equipBest,
+	Rebirth = RebirthService.rebirth,
 	UnlockRoute = RouteService.unlock,
 	Travel = RouteService.travel,
 	BuyPass = PassService.prompt,
@@ -1550,6 +2261,12 @@ end
 
 -- Recalcula a capacidade (depois de comprar Cesta Maior).
 Basket.refresh = sync
+
+-- Esvazia sem guardar (renascer).
+function Basket.clear(player: Player)
+	baskets[player] = nil
+	sync(player)
+end
 
 function Basket.release(player: Player)
 	Basket.deposit(player, true)
@@ -1789,6 +2506,7 @@ local Balance = require(Shared.Balance)
 local Format = require(Shared.Format)
 local Guardians = require(Shared.Config.Guardians)
 local Rarities = require(Shared.Config.Rarities)
+local Species = require(Shared.Config.Species)
 local Remotes = require(Shared.Remotes)
 local Routes = require(Shared.Config.Routes)
 local Style = require(Shared.Style)
@@ -1996,7 +2714,7 @@ local function reward(boss: Boss)
 			local luck = Balance.luck(profile, false, false) * EGG_LUCK
 			local rarity = Balance.rollRarity(luck, rng)
 			local shiny = Balance.rollShiny(luck, rng)
-			EggService.give(player, route.species, rarity, shiny, "👑 OVO DO REI!")
+			EggService.give(player, Species.roll(route.id, rng:NextNumber()), rarity, shiny, "👑 OVO DO REI!")
 			Notify.toast(player, "⚔️ Você ajudou a derrotar o " .. kingName(boss.routeId) .. "! +💰 " .. Format.number(coins), KING)
 			DataService.push(player)
 		end
@@ -2188,7 +2906,74 @@ function BossService.init(zoneMap)
 end
 
 return BossService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000015"><Properties><string name="Name">DataService</string><ProtectedString name="Source"><![CDATA[local DataStoreService = game:GetService("DataStoreService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000015"><Properties><string name="Name">DailyService</string><ProtectedString name="Source"><![CDATA[-- 📅 Prêmio diário: entrar em dias seguidos aumenta o prêmio (até o dia 7).
+-- No 3º e no 7º dia seguido vem também um ovo raro para a Chocadeira.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Balance = require(Shared.Balance)
+local Format = require(Shared.Format)
+local Species = require(Shared.Config.Species)
+
+local DataService = require(script.Parent.DataService)
+local EggService = require(script.Parent.EggService)
+local Notify = require(script.Parent.Notify)
+local PassService = require(script.Parent.PassService)
+
+local DailyService = {}
+
+local DAY = 24 * 60 * 60
+local MAX_STREAK = 7
+local EGG_DAYS = { [3] = 3, [7] = 4 } -- dia seguido → raridade do ovo
+local GOLD = Color3.fromRGB(255, 205, 60)
+
+local function bestRoute(profile): string
+	local best = "Galinheiro"
+	for _, routeId in { "Galinheiro", "Chiqueiro", "Pasto", "Pradaria" } do
+		if profile.routes[routeId] then
+			best = routeId
+		end
+	end
+	return best
+end
+
+function DailyService.claim(player: Player)
+	local profile = DataService.get(player)
+	if not profile then
+		return
+	end
+	local today = math.floor(os.time() / DAY)
+	local daily = profile.daily
+	if daily.day == today then
+		return
+	end
+	daily.streak = if daily.day == today - 1 then daily.streak + 1 else 1
+	daily.day = today
+	local day = math.min(daily.streak, MAX_STREAK)
+	-- Prêmio cresce com a produção da fazenda: ~2 minutos de produção por dia seguido.
+	local rate = Balance.totalProduction(profile, PassService.has(player, "VIP"))
+	local coins = math.floor((150 + rate * 120) * day)
+	DataService.addCoins(player, coins)
+	DataService.push(player)
+
+	local sub = "+💰 " .. Format.number(coins) .. "  •  volte amanhã para o dia " .. math.min(daily.streak + 1, MAX_STREAK)
+	local eggRarity = EGG_DAYS[day]
+	task.delay(4, function()
+		if not player.Parent then
+			return
+		end
+		Notify.big(player, "📅 PRÊMIO DIÁRIO • DIA " .. daily.streak .. "!", sub, GOLD, "revelar")
+		if eggRarity then
+			local routeId = bestRoute(profile)
+			local species = Species.roll(routeId, Random.new():NextNumber())
+			task.wait(3)
+			EggService.give(player, species, eggRarity, false, "📅 OVO DO PRÊMIO DIÁRIO!")
+		end
+	end)
+end
+
+return DailyService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000016"><Properties><string name="Name">DataService</string><ProtectedString name="Source"><![CDATA[local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -2227,6 +3012,9 @@ local function template()
 		materials = {},
 		animals = {},
 		nextAnimalId = 1,
+		equipped = {},
+		rebirths = 0,
+		daily = { day = 0, streak = 0 },
 		upgrades = { Sorte = 0, Fazenda = 0, Velocidade = 0, Pulo = 0, Rede = 0, Cesta = 0, Esteira = 0 },
 		training = 0,
 		eggs = {},
@@ -2234,7 +3022,7 @@ local function template()
 		mission = { index = 1, base = 0 },
 		routes = { Galinheiro = true },
 		index = {},
-		stats = { legendaries = 0, nests = 0, collected = 0, deposited = 0, evolved = 0, chests = 0, knockouts = 0, bosses = 0, hatched = 0 },
+		stats = { legendaries = 0, nests = 0, collected = 0, deposited = 0, evolved = 0, chests = 0, knockouts = 0, bosses = 0, hatched = 0, races = 0, stampedes = 0 },
 		lastOnline = 0,
 	}
 end
@@ -2432,9 +3220,11 @@ function DataService.init()
 end
 
 return DataService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000016"><Properties><string name="Name">EggService</string><ProtectedString name="Source"><![CDATA[-- 🐣 Ovos: ninho e chefão dão um ovo (da cor da raridade) que vai para a Chocadeira da fazenda.
--- Quanto mais raro, mais demora para chocar. O tempo usa os.time(), então continua contando
--- com o jogo fechado. Pronto → "Chocar" → o animal nasce na fazenda.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000017"><Properties><string name="Name">EggService</string><ProtectedString name="Source"><![CDATA[-- 🐣 Ovos: o ninho dá um ovo (da cor da raridade) que o jogador CARREGA nos braços até a
+-- Chocadeira da fazenda. Se um guardião pegar, o ovo cai e dá para pegar de volta por um tempo.
+-- Na Chocadeira, quanto mais raro, mais demora para chocar. O tempo usa os.time(), então
+-- continua contando com o jogo fechado. Pronto → "Chocar" → o animal nasce na fazenda.
+-- Ovo do chefão e do prêmio diário vão direto para a Chocadeira.
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -2455,71 +3245,66 @@ local EggService = {}
 -- Segundos para chocar por raridade: Comum, Incomum, Rara, Épica, Lendária, Mítica.
 EggService.HATCH_SECONDS = { 10, 30, 60, 120, 300, 600 }
 local READY = Color3.fromRGB(95, 235, 70)
+local ORANGE = Color3.fromRGB(255, 200, 120)
+local PLACE_DISTANCE = 12
+local DROP_SECONDS = 30
+-- Onde o ovo fica em relação ao HumanoidRootPart: na frente do peito, entre as mãos.
+local CARRY_OFFSET = CFrame.new(0, 0.55, -1.75)
+-- Atributo no personagem que faz o cliente pôr os braços na pose de segurar.
+local CARRY_ATTRIBUTE = "CarregandoOvo"
 
 type Timer = { label: TextLabel, egg: any }
 local folders: { [Player]: Instance } = {}
 local timers: { [Player]: { Timer } } = {}
+local carried: { [Player]: BasePart } = {}
+local dropped: { [Player]: Model } = {}
 
 local function eggName(rarity: number): string
 	return "Ovo " .. Rarities.label(rarity, false)
+end
+
+local function carriedEgg(profile): any
+	for _, egg in profile.eggs do
+		if egg.carried then
+			return egg
+		end
+	end
+	return nil
+end
+
+function EggService.isCarrying(player: Player): boolean
+	local profile = DataService.get(player)
+	return profile ~= nil and carriedEgg(profile) ~= nil
 end
 
 local function readyCount(profile): (number, number)
 	local now = os.time()
 	local ready, waiting = 0, 0
 	for _, egg in profile.eggs do
-		if now >= egg.readyAt then
-			ready += 1
-		else
-			waiting += 1
+		if not egg.carried then
+			if now >= egg.readyAt then
+				ready += 1
+			else
+				waiting += 1
+			end
 		end
 	end
 	return ready, waiting
 end
 
-local function hatch(player: Player, eggId: string)
-	local profile = DataService.get(player)
-	if not profile then
-		return
-	end
-	for index, egg in profile.eggs do
-		if egg.id == eggId then
-			local left = egg.readyAt - os.time()
-			if left > 0 then
-				Notify.toast(player, "⏳ Ainda falta " .. Format.time(left) .. " para chocar", Color3.fromRGB(255, 200, 120))
-				return
-			end
-			table.remove(profile.eggs, index)
-			profile.stats.hatched = (profile.stats.hatched or 0) + 1
-			local animal, soldFor = FarmService.addAnimal(player, egg.species, egg.rarity, egg.shiny)
-			local shown = animal or { id = "", species = egg.species, rarity = egg.rarity, shiny = egg.shiny }
-			Notify.reveal(player, {
-				title = "🐣 NASCEU!",
-				name = Balance.animalName(shown),
-				color = Rarities.list[egg.rarity].color,
-				sub = if soldFor
-					then "Fazenda cheia! Vendido por 💰 " .. Format.number(soldFor) .. " — aumente a fazenda na 🛒 Loja"
-					else "Foi para a sua fazenda: +💰 " .. Format.rate(Balance.animalProduction(shown)) .. "/s",
-			})
-			DataService.push(player)
-			EggService.refresh(player)
-			return
-		end
-	end
-end
-
-local function buildEgg(parent: Instance, slot: CFrame, egg, owner: Player): TextLabel
-	local rarity = egg.rarity
+-- Casca do ovo na cor da raridade (Lendário brilha, Mítico é arco-íris, Raro+ solta brilhinho).
+local function shellFor(rarity: number, size: number): Part
 	local color = Rarities.list[rarity].color
 	local shell = Instance.new("Part")
 	shell.Name = "Ovo"
 	shell.Shape = Enum.PartType.Ball
-	shell.Size = Vector3.one * 2.4
+	shell.Size = Vector3.one * size
 	shell.Color = color:Lerp(Color3.new(1, 1, 1), if rarity == 1 then 0.6 else 0.15)
 	shell.Material = if rarity >= Rarities.LEGENDARY then Enum.Material.Neon else Enum.Material.SmoothPlastic
-	shell.Anchored = true
 	shell.CanCollide = false
-	shell.CFrame = slot
+	shell.CanQuery = false
+	shell.CanTouch = false
+	shell.Massless = true
 	local mesh = Instance.new("SpecialMesh")
 	mesh.MeshType = Enum.MeshType.Sphere
 	mesh.Scale = Vector3.new(1, 1.3, 1)
@@ -2539,6 +3324,47 @@ local function buildEgg(parent: Instance, slot: CFrame, egg, owner: Player): Tex
 		sparkles.Size = NumberSequence.new(0.35, 0)
 		sparkles.Parent = shell
 	end
+	return shell
+end
+
+local function hatch(player: Player, eggId: string)
+	local profile = DataService.get(player)
+	if not profile then
+		return
+	end
+	for index, egg in profile.eggs do
+		if egg.id == eggId and not egg.carried then
+			local left = egg.readyAt - os.time()
+			if left > 0 then
+				Notify.toast(player, "⏳ Ainda falta " .. Format.time(left) .. " para chocar", ORANGE)
+				return
+			end
+			table.remove(profile.eggs, index)
+			profile.stats.hatched = (profile.stats.hatched or 0) + 1
+			local animal, soldFor = FarmService.addAnimal(player, egg.species, egg.rarity, egg.shiny)
+			local shown = animal or { id = "", species = egg.species, rarity = egg.rarity, shiny = egg.shiny }
+			Notify.reveal(player, {
+				title = "🐣 NASCEU!",
+				name = Balance.animalName(shown),
+				color = Rarities.list[egg.rarity].color,
+				sub = if soldFor
+					then "Fazenda cheia! Vendido por 💰 " .. Format.number(soldFor) .. " — aumente a fazenda na 🛒 Loja"
+					else "+💰 " .. Format.rate(Balance.animalProduction(shown)) .. "/s  •  equipe como 🐾 pet em Animais!",
+			})
+			DataService.push(player)
+			EggService.refresh(player)
+			return
+		end
+	end
+end
+
+local function buildEgg(parent: Instance, slot: CFrame, egg, owner: Player): TextLabel
+	local rarity = egg.rarity
+	local color = Rarities.list[rarity].color
+	local shell = shellFor(rarity, 2.4)
+	shell.Anchored = true
+	shell.CanQuery = true
+	shell.CFrame = slot
 
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromOffset(170, 52)
@@ -2598,13 +3424,17 @@ function EggService.refresh(player: Player)
 	local folder = Instance.new("Folder")
 	folder.Name = "Ovos"
 	local slots = plot.incubator.slots
-	for index, egg in profile.eggs do
-		if index > #slots then
-			break
+	local shown, total = 0, 0
+	for _, egg in profile.eggs do
+		if not egg.carried then
+			total += 1
+			if shown < #slots then
+				shown += 1
+				table.insert(timers[player], { label = buildEgg(folder, slots[shown], egg, player), egg = egg })
+			end
 		end
-		table.insert(timers[player], { label = buildEgg(folder, slots[index], egg, player), egg = egg })
 	end
-	local extra = #profile.eggs - #slots
+	local extra = total - shown
 	if extra > 0 then
 		local gui = Instance.new("BillboardGui")
 		gui.Size = UDim2.fromOffset(220, 30)
@@ -2628,40 +3458,264 @@ function EggService.refresh(player: Player)
 	folders[player] = folder
 end
 
--- Entrega um ovo (ninho, chefão…). A raridade já vem sorteada; brilhante fica em segredo.
-function EggService.give(player: Player, species: string, rarity: number, shiny: boolean, title: string?)
+-- ---------- Carregar nos braços ----------
+
+local function detachCarry(player: Player)
+	if carried[player] then
+		carried[player]:Destroy()
+		carried[player] = nil
+	end
+	local character = player.Character
+	if character then
+		character:SetAttribute(CARRY_ATTRIBUTE, nil)
+	end
+	player:SetAttribute("OvoNaMao", nil)
+end
+
+-- Põe o ovo na frente do peito do personagem (soldado no HumanoidRootPart).
+local function attachCarry(player: Player)
+	local profile = DataService.get(player)
+	local egg = profile and carriedEgg(profile)
+	if carried[player] then
+		carried[player]:Destroy()
+		carried[player] = nil
+	end
+	if not egg or dropped[player] then
+		return
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not character or not root then
+		return
+	end
+	local shell = shellFor(egg.rarity, 2)
+	shell.Name = "OvoCarregado"
+	shell.Anchored = false
+	shell.CFrame = root.CFrame * CARRY_OFFSET
+	local weld = Instance.new("Weld")
+	weld.Part0 = root
+	weld.Part1 = shell
+	weld.C0 = CARRY_OFFSET
+	weld.Parent = shell
+	local light = Instance.new("PointLight")
+	light.Color = Rarities.list[egg.rarity].color
+	light.Range = 7
+	light.Brightness = 1.2
+	light.Parent = shell
+	shell.Parent = character
+	carried[player] = shell
+	character:SetAttribute(CARRY_ATTRIBUTE, true)
+	player:SetAttribute("OvoNaMao", eggName(egg.rarity))
+end
+
+-- Coloca o ovo carregado na Chocadeira: o cronômetro começa agora.
+function EggService.place(player: Player)
+	local profile = DataService.get(player)
+	local egg = profile and carriedEgg(profile)
+	if not egg then
+		return
+	end
+	local seconds = EggService.HATCH_SECONDS[egg.rarity] or 10
+	egg.carried = nil
+	egg.readyAt = os.time() + seconds
+	profile.stats.placed = (profile.stats.placed or 0) + 1
+	detachCarry(player)
+	Notify.big(
+		player,
+		"🐣 OVO NA CHOCADEIRA!",
+		eggName(egg.rarity) .. " choca em " .. Format.time(seconds) .. ". Enquanto isso, treine na 🏃 esteira!",
+		Rarities.list[egg.rarity].color,
+		"guardar"
+	)
+	DataService.push(player)
+	EggService.refresh(player)
+end
+
+-- Guardião (ou estouro da boiada) pegou quem carregava: o ovo cai no chão.
+function EggService.drop(player: Player, position: Vector3, parent: Instance)
+	local profile = DataService.get(player)
+	local egg = profile and carriedEgg(profile)
+	if not egg or dropped[player] then
+		return
+	end
+	detachCarry(player)
+	local model = Instance.new("Model")
+	model.Name = "OvoCaido"
+	local shell = shellFor(egg.rarity, 2.2)
+	shell.Anchored = true
+	shell.CanQuery = true
+	shell.CFrame = CFrame.new(position.X, 1.4, position.Z)
+	shell.Parent = model
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromOffset(220, 40)
+	gui.StudsOffset = Vector3.new(0, 2.4, 0)
+	gui.MaxDistance = 120
+	gui.LightInfluence = 0
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.FredokaOne
+	label.TextScaled = true
+	label.Text = "🥚 Seu ovo caiu!"
+	label.TextColor3 = ORANGE
+	Style.outline(label, 2.5)
+	label.Parent = gui
+	gui.Parent = shell
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Pegar ovo"
+	prompt.ObjectText = eggName(egg.rarity)
+	prompt.HoldDuration = 0.3
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = shell
+	model.Parent = parent
+	dropped[player] = model
+	player:SetAttribute("OvoCaido", true)
+
+	local done = false
+	local function finish()
+		done = true
+		model:Destroy()
+		dropped[player] = nil
+		player:SetAttribute("OvoCaido", nil)
+	end
+	prompt.Triggered:Connect(function(who)
+		if done then
+			return
+		end
+		if who ~= player then
+			Notify.toast(who, "Esse ovo é de " .. player.DisplayName, Color3.fromRGB(255, 120, 100))
+			return
+		end
+		finish()
+		attachCarry(player)
+		Notify.toast(player, "🥚 Pegou o ovo de volta! Leve para a Chocadeira", READY)
+	end)
+	Notify.toast(player, "🥚 Você deixou o ovo cair! Pegue de volta em " .. DROP_SECONDS .. "s", ORANGE)
+	-- Contagem regressiva; se ninguém pegar, o ovo quebra.
+	task.spawn(function()
+		for left = DROP_SECONDS, 1, -1 do
+			if done then
+				return
+			end
+			label.Text = "🥚 Pegue seu ovo! " .. left .. "s"
+			task.wait(1)
+		end
+		if done then
+			return
+		end
+		finish()
+		local current = DataService.get(player)
+		if current then
+			local index = table.find(current.eggs, egg)
+			if index then
+				table.remove(current.eggs, index)
+			end
+			DataService.push(player)
+		end
+		if player.Parent then
+			Notify.toast(player, "💔 O ovo quebrou… abra outro ninho!", Color3.fromRGB(255, 120, 100))
+		end
+	end)
+end
+
+-- Entrega um ovo. A raridade já vem sorteada; brilhante fica em segredo.
+-- carry = true: o jogador leva nos braços (ninho). Se já estiver carregando um, vai direto.
+function EggService.give(player: Player, species: string, rarity: number, shiny: boolean, title: string?, carry: boolean?)
 	local profile = DataService.get(player)
 	if not profile then
 		return
 	end
 	profile.nextEggId = (profile.nextEggId or 1) + 1
 	local seconds = EggService.HATCH_SECONDS[rarity] or 10
-	table.insert(profile.eggs, {
+	local inArms = carry == true and carriedEgg(profile) == nil
+	local egg = {
 		id = "e" .. profile.nextEggId,
 		species = species,
 		rarity = rarity,
 		shiny = shiny,
-		readyAt = os.time() + seconds,
-	})
+		readyAt = if inArms then 0 else os.time() + seconds,
+		carried = if inArms then true else nil,
+	}
+	table.insert(profile.eggs, egg)
 	Notify.reveal(player, {
 		title = title or "🥚 VOCÊ PEGOU UM OVO!",
 		name = eggName(rarity),
 		color = Rarities.list[rarity].color,
-		sub = "Foi para a 🐣 Chocadeira da sua fazenda. Choca em " .. Format.time(seconds),
+		sub = if inArms
+			then "Leve nos braços até a 🐣 Chocadeira da sua fazenda! Cuidado com os guardiões"
+			else "Foi para a 🐣 Chocadeira da sua fazenda. Choca em " .. Format.time(seconds),
 	})
+	if inArms then
+		attachCarry(player)
+	end
 	DataService.push(player)
 	EggService.refresh(player)
 end
 
-function EggService.release(player: Player)
-	if folders[player] then
-		folders[player]:Destroy()
+-- Ao entrar: um ovo que ficou "nos braços" (servidor caiu) vai para a Chocadeira.
+function EggService.setup(player: Player)
+	local profile = DataService.get(player)
+	if not profile then
+		return
 	end
-	folders[player] = nil
+	for _, egg in profile.eggs do
+		if egg.carried then
+			egg.carried = nil
+			egg.readyAt = os.time() + (EggService.HATCH_SECONDS[egg.rarity] or 10)
+		end
+	end
+	EggService.refresh(player)
+end
+
+function EggService.release(player: Player)
+	-- Saiu carregando (ou com o ovo caído): o ovo vai direto para a Chocadeira, não perde.
+	local profile = DataService.get(player)
+	local egg = profile and carriedEgg(profile)
+	if egg then
+		egg.carried = nil
+		egg.readyAt = os.time() + (EggService.HATCH_SECONDS[egg.rarity] or 10)
+	end
+	for _, list in { folders, dropped, carried } do
+		if list[player] then
+			list[player]:Destroy()
+		end
+		list[player] = nil
+	end
 	timers[player] = nil
 end
 
+local function watchCharacter(player: Player)
+	player.CharacterAdded:Connect(function(character)
+		character:WaitForChild("HumanoidRootPart", 10)
+		task.wait(0.5)
+		if player.Character == character then
+			attachCarry(player)
+		end
+	end)
+end
+
 function EggService.init()
+	Players.PlayerAdded:Connect(watchCharacter)
+	for _, player in Players:GetPlayers() do
+		watchCharacter(player)
+	end
+	-- Chegou perto da Chocadeira carregando o ovo: coloca sozinho.
+	task.spawn(function()
+		while true do
+			task.wait(0.25)
+			for player, shell in carried do
+				local plot = FarmService.plotFor(player)
+				local character = player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+				if plot and root and shell.Parent then
+					if (root.Position - plot.incubator.anchor.Position).Magnitude <= PLACE_DISTANCE then
+						EggService.place(player)
+					end
+				end
+			end
+		end
+	end)
 	-- Atualiza os cronômetros e conta ovos prontos/esperando (o guia usa).
 	task.spawn(function()
 		while true do
@@ -2682,6 +3736,10 @@ function EggService.init()
 					local ready, waiting = readyCount(profile)
 					player:SetAttribute("OvosProntos", ready)
 					player:SetAttribute("OvosEsperando", waiting)
+					-- Personagem novo (morreu/resetou) sem o ovo na mão: põe de volta.
+					if carriedEgg(profile) and not carried[player] and not dropped[player] and player.Character then
+						attachCarry(player)
+					end
 				end
 			end
 		end
@@ -2689,7 +3747,7 @@ function EggService.init()
 end
 
 return EggService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000017"><Properties><string name="Name">EquipmentService</string><ProtectedString name="Source"><![CDATA[-- Mostra os equipamentos comprados no boneco (todo mundo vê):
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">EquipmentService</string><ProtectedString name="Source"><![CDATA[-- Mostra os equipamentos comprados no boneco (todo mundo vê):
 -- 👢 botas nos pés, 🥅 rede na mão e 🧺 cesta nas costas que enche conforme a coleta.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -2868,7 +3926,7 @@ function EquipmentService.init()
 end
 
 return EquipmentService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">FarmService</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">FarmService</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
@@ -2884,6 +3942,7 @@ local Basket = require(script.Parent.Basket)
 local DataService = require(script.Parent.DataService)
 local Notify = require(script.Parent.Notify)
 local PassService = require(script.Parent.PassService)
+local PetService = require(script.Parent.PetService)
 local Teleport = require(script.Parent.Teleport)
 
 local FarmService = {}
@@ -2904,12 +3963,40 @@ local function randomSpot(plot): CFrame
 	return plot.cframe * CFrame.new(x, 0, z) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
 end
 
+-- Ações paradas que o cliente anima (client/AnimalAnimator): farejar, comer, dormir.
+local IDLE_ACTIONS = {
+	{ name = "farejar", weight = 3, min = 2, max = 4 },
+	{ name = "comer", weight = 3, min = 3, max = 5 },
+	{ name = "dormir", weight = 1, min = 6, max = 10 },
+}
+
+local function idleAction(model: Model)
+	local total = 0
+	for _, action in IDLE_ACTIONS do
+		total += action.weight
+	end
+	local roll = rng:NextNumber(0, total)
+	for _, action in IDLE_ACTIONS do
+		roll -= action.weight
+		if roll <= 0 then
+			model:SetAttribute("Acao", action.name)
+			task.wait(rng:NextNumber(action.min, action.max))
+			model:SetAttribute("Acao", nil)
+			return
+		end
+	end
+end
+
 local function wander(model: Model, plot)
 	local root = model.PrimaryPart :: BasePart
 	while model.Parent do
-		task.wait(rng:NextNumber(2, 6))
+		task.wait(rng:NextNumber(1, 3))
 		if not model.Parent then
 			break
+		end
+		if rng:NextNumber() < 0.45 then
+			idleAction(model)
+			continue
 		end
 		local from = root.Position
 		local target = randomSpot(plot).Position
@@ -2928,10 +4015,24 @@ local function wander(model: Model, plot)
 	end
 end
 
+local function despawnModel(player: Player, animalId: string)
+	local models = modelsOf[player]
+	if models and models[animalId] then
+		models[animalId]:Destroy()
+		models[animalId] = nil
+	end
+end
+
 local function spawnModel(player: Player, animal)
 	local plot = plotOf[player]
 	local models = modelsOf[player]
-	if not plot or not models then
+	local profile = DataService.get(player)
+	if not plot or not models or not profile then
+		return
+	end
+	-- Pet equipado anda com o dono, não fica na fazenda.
+	if Balance.isEquipped(profile, animal.id) then
+		despawnModel(player, animal.id)
 		return
 	end
 	local previous = models[animal.id]
@@ -2946,14 +4047,6 @@ local function spawnModel(player: Player, animal)
 	task.spawn(wander, model, plot)
 end
 
-local function despawnModel(player: Player, animalId: string)
-	local models = modelsOf[player]
-	if models and models[animalId] then
-		models[animalId]:Destroy()
-		models[animalId] = nil
-	end
-end
-
 local function findAnimal(profile, animalId: string): (any, number?)
 	for i, animal in profile.animals do
 		if animal.id == animalId then
@@ -2964,7 +4057,26 @@ local function findAnimal(profile, animalId: string): (any, number?)
 end
 
 local function registerDiscovery(player: Player, profile, animal)
-	profile.index[animal.species .. ":" .. animal.rarity] = true
+	local key = animal.species .. ":" .. animal.rarity
+	if not profile.index[key] then
+		profile.index[key] = true
+		local count = Balance.indexCount(profile)
+		if count % Balance.INDEX_STEP == 0 then
+			Notify.big(
+				player,
+				"📖 ÍNDICE: " .. count .. " DESCOBERTAS!",
+				"Bônus do índice agora: +" .. Balance.indexBonus(profile) .. "% de moedas para sempre",
+				Color3.fromRGB(190, 130, 255),
+				"revelar"
+			)
+		else
+			Notify.toast(
+				player,
+				"📖 Nova descoberta no Índice! (" .. count .. " • faltam " .. (Balance.INDEX_STEP - count % Balance.INDEX_STEP) .. " para +" .. Balance.INDEX_BONUS .. "% moedas)",
+				Color3.fromRGB(190, 130, 255)
+			)
+		end
+	end
 	if animal.rarity >= Rarities.LEGENDARY then
 		profile.stats.legendaries += 1
 		DataService.syncLegendaries(player)
@@ -3084,11 +4196,112 @@ function FarmService.plotFor(player: Player)
 	return plotOf[player]
 end
 
+-- Chamado quando algo que muda os bônus acontece (pets, renascer). init.server liga no
+-- TrainingService para atualizar a placa da esteira.
+FarmService.onBonusChanged = nil :: ((Player) -> ())?
+FarmService.onPlotReleased = nil :: ((any) -> ())?
+
+local function bonusChanged(player: Player)
+	FarmService.applySpeed(player)
+	Basket.refresh(player)
+	PetService.refresh(player)
+	if FarmService.onBonusChanged then
+		FarmService.onBonusChanged(player)
+	end
+	DataService.push(player)
+end
+
+-- Remonta todos os bichos da fazenda (depois de renascer, por exemplo).
+function FarmService.reloadAnimals(player: Player)
+	local profile = DataService.get(player)
+	local models = modelsOf[player]
+	if not profile or not models then
+		return
+	end
+	for id in models do
+		despawnModel(player, id)
+	end
+	for _, animal in profile.animals do
+		spawnModel(player, animal)
+	end
+	bonusChanged(player)
+end
+
+-- Equipar/desequipar um pet.
+function FarmService.equip(player: Player, animalId: string): (boolean, string?)
+	local profile = DataService.get(player)
+	local animal = findAnimal(profile, animalId)
+	if not animal then
+		return false, "Animal não encontrado"
+	end
+	local index = table.find(profile.equipped, animalId)
+	if index then
+		table.remove(profile.equipped, index)
+		spawnModel(player, animal)
+		bonusChanged(player)
+		return true, "🐾 " .. Balance.animalName(animal) .. " voltou para a fazenda"
+	end
+	if #profile.equipped >= Balance.petSlots(profile) then
+		return false, "Pets cheios! (" .. Balance.petSlots(profile) .. ") Desequipe um ou renasça para ter mais espaço"
+	end
+	table.insert(profile.equipped, animalId)
+	despawnModel(player, animalId)
+	profile.stats.equips = (profile.stats.equips or 0) + 1
+	bonusChanged(player)
+	local stat, value = Balance.buffOf(animal)
+	local buff = Species.buffs[stat]
+	return true, "🐾 " .. Balance.animalName(animal) .. " equipado! " .. buff.emoji .. " +" .. value .. buff.suffix .. " " .. buff.label
+end
+
+-- Nota de "quão bom" é um pet: raridade conta muito, rotas mais difíceis contam mais.
+local ROUTE_WEIGHT = { Galinheiro = 1, Chiqueiro = 1.3, Pasto = 1.6, Pradaria = 2 }
+
+local function petScore(animal): number
+	local species = Species.byId[animal.species]
+	return (Balance.PET_BUFF_MULT[animal.rarity] or 1)
+		* (if animal.shiny then Balance.SHINY_BUFF_MULT else 1)
+		* (ROUTE_WEIGHT[species.route] or 1)
+end
+
+function FarmService.equipBest(player: Player): (boolean, string?)
+	local profile = DataService.get(player)
+	local list = table.clone(profile.animals)
+	table.sort(list, function(a, b)
+		local sa, sb = petScore(a), petScore(b)
+		if sa ~= sb then
+			return sa > sb
+		end
+		return a.id < b.id
+	end)
+	local previous = profile.equipped
+	profile.equipped = {}
+	for i = 1, math.min(Balance.petSlots(profile), #list) do
+		table.insert(profile.equipped, list[i].id)
+	end
+	for _, animal in profile.animals do
+		local was = table.find(previous, animal.id) ~= nil
+		local now = Balance.isEquipped(profile, animal.id)
+		if was ~= now then
+			if now then
+				despawnModel(player, animal.id)
+			else
+				spawnModel(player, animal)
+			end
+		end
+	end
+	profile.stats.equips = (profile.stats.equips or 0) + 1
+	bonusChanged(player)
+	return true, "🐾 Melhores pets equipados!"
+end
+
 function FarmService.releasePlot(player: Player)
 	local plot = plotOf[player]
 	if plot then
 		plot.owner = nil
 		plot.sign.Text = "Fazenda livre"
+		if FarmService.onPlotReleased then
+			FarmService.onPlotReleased(plot)
+		end
 		plot.animals:ClearAllChildren()
 		local decorations = (plot.animals.Parent :: Instance):FindFirstChild("Melhorias")
 		if decorations then
@@ -3112,7 +4325,15 @@ function FarmService.applySpeed(player: Player)
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	if profile and humanoid then
 		local boosted = (player:GetAttribute("BoostVelocidade") or 0) > Workspace:GetServerTimeNow()
-		humanoid.WalkSpeed = Balance.walkSpeed(profile) + (if boosted then Balance.BOOST_SPEED else 0)
+		local speed = Balance.walkSpeed(profile) + (if boosted then Balance.BOOST_SPEED else 0)
+		-- Corrida a cavalo (Pradaria): velocidade fixa do cavalo.
+		local race = player:GetAttribute("CorridaVelocidade")
+		if race then
+			speed = race
+		end
+		humanoid.WalkSpeed = speed
+		-- O cliente usa este valor como base (lama deixa lento, árvore limita…).
+		player:SetAttribute("Velocidade", speed)
 		humanoid.UseJumpPower = false
 		humanoid.JumpHeight = Balance.jumpHeight(profile)
 	end
@@ -3177,6 +4398,9 @@ function FarmService.evolve(player: Player, animalId: string): (boolean, string?
 	profile.stats.evolved = (profile.stats.evolved or 0) + 1
 	registerDiscovery(player, profile, animal)
 	spawnModel(player, animal)
+	if Balance.isEquipped(profile, animal.id) then
+		bonusChanged(player)
+	end
 	DataService.push(player)
 
 	Notify.reveal(player, {
@@ -3201,6 +4425,11 @@ function FarmService.sell(player: Player, animalId: string): (boolean, string?)
 	local value = Balance.sellPrice(animal)
 	DataService.addCoins(player, value)
 	despawnModel(player, animalId)
+	local equippedIndex = table.find(profile.equipped, animalId)
+	if equippedIndex then
+		table.remove(profile.equipped, equippedIndex)
+		bonusChanged(player)
+	end
 	DataService.push(player)
 	return true, "Vendido por 💰 " .. Format.number(value)
 end
@@ -3237,7 +4466,7 @@ function FarmService.init(plotList)
 end
 
 return FarmService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">GuardianService</string><ProtectedString name="Source"><![CDATA[-- Guardiões: bichos bravos que vigiam cada rota. Quando alguém mexe num ninho (ou às vezes
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">GuardianService</string><ProtectedString name="Source"><![CDATA[-- Guardiões: bichos bravos que vigiam cada rota. Quando alguém mexe num ninho (ou às vezes
 -- num item), o guardião mais perto corre atrás. Se pegar, empurra, deixa tonto e derruba
 -- parte da cesta no chão, que o jogador pode pegar de volta.
 local Players = game:GetService("Players")
@@ -3254,6 +4483,7 @@ local Style = require(Shared.Style)
 
 local Basket = require(script.Parent.Basket)
 local DataService = require(script.Parent.DataService)
+local EggService = require(script.Parent.EggService)
 local Notify = require(script.Parent.Notify)
 
 local GuardianService = {}
@@ -3307,6 +4537,8 @@ type Guardian = {
 	lastHitAt: number,
 	stunnedUntil: number,
 	knockedOut: boolean,
+	action: string?,
+	actionEnds: number,
 }
 
 local guardians: { Guardian } = {}
@@ -3315,6 +4547,7 @@ local rng = Random.new()
 local EffectRemote: RemoteEvent
 local lastHit: { [Player]: number } = {}
 local updateTag: (Guardian) -> ()
+local setAction: (Guardian, string?) -> ()
 
 -- Chamado quando um guardião desmaia (init.server liga no BoostService para soltar a comida).
 GuardianService.beforeHit = nil :: ((Player) -> boolean)?
@@ -3416,30 +4649,38 @@ local function dropPile(owner: Player, zone, position: Vector3, items: { [string
 	end)
 end
 
-local function catch(guardian: Guardian, player: Player)
+-- Empurrão que derruba parte da cesta e o ovo que o jogador carrega (guardião, estouro da boiada).
+-- Devolve false se o escudo protegeu.
+function GuardianService.knock(player: Player, from: Vector3, zone, who: string, fraction: number?): boolean
 	local root = rootOf(player)
-	stopChase(guardian)
-	guardian.cooldownUntil = os.clock() + COOLDOWN
 	if not root then
-		return
+		return false
 	end
-	-- Boost de escudo: o guardião bate e desiste, sem derrubar nada.
+	-- Boost de escudo: bate e desiste, sem derrubar nada.
 	if (player:GetAttribute("BoostEscudo") or 0) > Workspace:GetServerTimeNow() then
-		Notify.toast(player, "🛡️ O escudo te protegeu do " .. guardian.def.name .. "!", Color3.fromRGB(255, 215, 70))
-		return
+		Notify.toast(player, "🛡️ O escudo te protegeu do " .. who .. "!", Color3.fromRGB(255, 215, 70))
+		return false
 	end
-	EffectRemote:FireClient(player, { kind = "knock", from = guardian.root.Position })
-	local dropped = Basket.take(player, DROP_FRACTION)
+	EffectRemote:FireClient(player, { kind = "knock", from = from })
+	EggService.drop(player, root.Position + Vector3.new(0, 0, 3), zone.nodes)
+	local dropped = Basket.take(player, fraction or DROP_FRACTION)
 	local count = 0
 	for _, amount in dropped do
 		count += amount
 	end
 	if count > 0 then
-		dropPile(player, guardian.zone, root.Position, dropped)
-		Notify.toast(player, "💥 O " .. guardian.def.name .. " te pegou! Caíram " .. count .. " itens", ANGRY)
+		dropPile(player, zone, root.Position, dropped)
+		Notify.toast(player, "💥 O " .. who .. " te pegou! Caíram " .. count .. " itens", ANGRY)
 	else
-		Notify.toast(player, "💥 O " .. guardian.def.name .. " te pegou!", ANGRY)
+		Notify.toast(player, "💥 O " .. who .. " te pegou!", ANGRY)
 	end
+	return true
+end
+
+local function catch(guardian: Guardian, player: Player)
+	stopChase(guardian)
+	guardian.cooldownUntil = os.clock() + COOLDOWN
+	GuardianService.knock(player, guardian.root.Position, guardian.zone, guardian.def.name)
 end
 
 -- Primeiro o guardião "percebe" (para, vira, "!" e pulinho); só depois corre.
@@ -3473,7 +4714,8 @@ function GuardianService.alert(player: Player, position: Vector3, chance: number
 	local best: Guardian? = nil
 	local bestDistance = ALERT_RADIUS
 	for _, guardian in guardians do
-		if guardian.state ~= "chase" and guardian.state ~= "alert" and now >= guardian.cooldownUntil and now >= guardian.stunnedUntil and inZone(guardian.zone, position) then
+		local asleep = guardian.action == "dormir"
+		if not asleep and guardian.state ~= "chase" and guardian.state ~= "alert" and now >= guardian.cooldownUntil and now >= guardian.stunnedUntil and inZone(guardian.zone, position) then
 			local distance = (flat(guardian.root.Position) - flat(position)).Magnitude
 			if distance < bestDistance then
 				best, bestDistance = guardian, distance
@@ -3524,6 +4766,7 @@ function GuardianService.hit(player: Player): boolean
 		stopChase(guardian)
 	end
 	guardian.state = "idle"
+	setAction(guardian, nil)
 	guardian.hits += 1
 	guardian.lastHitAt = now
 
@@ -3561,6 +4804,14 @@ function GuardianService.hit(player: Player): boolean
 	return true
 end
 
+-- Ação atual no modelo (o cliente anima: "farejar", "dormir", "correr", "tonto", "desmaiado").
+function setAction(guardian: Guardian, action: string?)
+	if guardian.action ~= action then
+		guardian.action = action
+		guardian.model:SetAttribute("Acao", action)
+	end
+end
+
 local function step(guardian: Guardian, dt: number, now: number)
 	local position = guardian.root.Position
 	local goal: Vector3? = nil
@@ -3568,6 +4819,7 @@ local function step(guardian: Guardian, dt: number, now: number)
 
 	if guardian.stunnedUntil > 0 then
 		if now < guardian.stunnedUntil then
+			setAction(guardian, if guardian.knockedOut then "desmaiado" else "tonto")
 			local base = CFrame.new(position.X, 0, position.Z) * guardian.root.CFrame.Rotation
 			if guardian.knockedOut then
 				-- Desmaiado: deitado de lado.
@@ -3582,6 +4834,7 @@ local function step(guardian: Guardian, dt: number, now: number)
 		end
 		-- Acordou: fica em pé de novo.
 		guardian.stunnedUntil = 0
+		setAction(guardian, nil)
 		guardian.alert.Enabled = false
 		guardian.alertLabel.Text = "!"
 		if guardian.knockedOut then
@@ -3596,6 +4849,12 @@ local function step(guardian: Guardian, dt: number, now: number)
 	if guardian.hits > 0 and now - guardian.lastHitAt > HEAL_AFTER then
 		guardian.hits = 0
 		updateTag(guardian)
+	end
+
+	if guardian.state == "alert" or guardian.state == "chase" then
+		setAction(guardian, "correr")
+	elseif guardian.action == "correr" then
+		setAction(guardian, nil)
 	end
 
 	if guardian.state == "alert" then
@@ -3643,7 +4902,26 @@ local function step(guardian: Guardian, dt: number, now: number)
 		end
 	end
 	if guardian.state == "idle" then
+		-- Parado fazendo alguma coisa (farejar, dormir…): o cliente anima.
+		if guardian.action then
+			if now < guardian.actionEnds then
+				return
+			end
+			setAction(guardian, nil)
+			guardian.nextWander = 0
+		end
 		if not guardian.wanderTo or now > guardian.nextWander then
+			local roll = rng:NextNumber()
+			if roll < 0.25 then
+				setAction(guardian, "farejar")
+				guardian.actionEnds = now + rng:NextNumber(2, 4)
+				return
+			elseif roll < 0.33 then
+				-- Dormindo não percebe ninguém: dá para passar de fininho!
+				setAction(guardian, "dormir")
+				guardian.actionEnds = now + rng:NextNumber(5, 9)
+				return
+			end
 			local angle = rng:NextNumber(0, math.pi * 2)
 			local radius = rng:NextNumber(4, WANDER_RADIUS)
 			guardian.wanderTo = guardian.home + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
@@ -3730,6 +5008,8 @@ function GuardianService.init(zones)
 					lastHitAt = 0,
 					stunnedUntil = 0,
 					knockedOut = false,
+					action = nil,
+					actionEnds = 0,
 					home = home,
 					state = "idle",
 					target = nil,
@@ -3770,7 +5050,8 @@ function GuardianService.init(zones)
 end
 
 return GuardianService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[local CollectionService = game:GetService("CollectionService")
+local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -3794,6 +5075,14 @@ local WOOD = Color3.fromRGB(150, 105, 65)
 local FENCE = Color3.fromRGB(238, 228, 208)
 local STONE = Color3.fromRGB(125, 125, 135)
 
+-- Placa de melhoria ao lado da esteira (TrainingService escreve os textos).
+export type TreadmillBoard = {
+	part: BasePart,
+	level: TextLabel,
+	gain: TextLabel,
+	price: TextLabel,
+}
+
 export type Plot = {
 	index: number,
 	cframe: CFrame,
@@ -3801,6 +5090,7 @@ export type Plot = {
 	sign: TextLabel,
 	animals: Folder,
 	treadmill: BasePart,
+	board: TreadmillBoard,
 	incubator: { anchor: BasePart, slots: { CFrame } },
 	owner: Player?,
 }
@@ -4245,7 +5535,51 @@ end
 local TREADMILL_BELT = Vector3.new(7, 0.3, 10)
 local CHEVRON_COUNT = 5
 
-local function buildTreadmill(parent: Instance, at: CFrame): BasePart
+-- Placa "⚡ ESTEIRA TURBO" ao lado da esteira: mostra o nível, o ganho agora → depois e o preço.
+local function buildBoard(parent: Instance, at: CFrame): TreadmillBoard
+	local frameColor = Color3.fromRGB(255, 150, 40)
+	for _, z in { -3, 3 } do
+		block(parent, Vector3.new(0.8, 7.4, 0.8), at * CFrame.new(0, 3.7, z), frameColor, Enum.Material.Plastic)
+	end
+	local board = block(parent, Vector3.new(0.6, 5, 7), at * CFrame.new(0, 5.2, 0), Color3.fromRGB(28, 32, 58))
+	board.Name = "PlacaEsteira"
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Tela"
+	gui.Face = Enum.NormalId.Left
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 60
+	gui.LightInfluence = 0
+	gui.Parent = board
+	local stroke = Instance.new("Frame")
+	stroke.BackgroundTransparency = 1
+	stroke.Size = UDim2.fromScale(1, 1)
+	stroke.Parent = gui
+	local border = Instance.new("UIStroke")
+	border.Color = frameColor
+	border.Thickness = 10
+	border.Parent = stroke
+	local function line(name: string, text: string, y: number, h: number, color: Color3): TextLabel
+		local label = Instance.new("TextLabel")
+		label.Name = name
+		label.BackgroundTransparency = 1
+		label.Position = UDim2.fromScale(0.05, y)
+		label.Size = UDim2.fromScale(0.9, h)
+		label.Font = Enum.Font.FredokaOne
+		label.TextScaled = true
+		label.Text = text
+		label.TextColor3 = color
+		Style.outline(label, 4)
+		label.Parent = gui
+		return label
+	end
+	line("Titulo", "⚡ ESTEIRA TURBO", 0.05, 0.22, Color3.fromRGB(255, 200, 70))
+	local level = line("Nivel", "Nível 0/10", 0.29, 0.15, Color3.new(1, 1, 1))
+	local gain = line("Ganho", "+10/s ▶ +17/s", 0.46, 0.22, Color3.fromRGB(120, 230, 255))
+	local price = line("Preco", "💰 150", 0.72, 0.2, Color3.fromRGB(95, 235, 70))
+	return { part = board, level = level, gain = gain, price = price }
+end
+
+local function buildTreadmill(parent: Instance, at: CFrame): (BasePart, TreadmillBoard)
 	local model = Instance.new("Model")
 	model.Name = "Esteira"
 	model.Parent = parent
@@ -4293,7 +5627,8 @@ local function buildTreadmill(parent: Instance, at: CFrame): BasePart
 		UDim2.fromScale(0, 0),
 		Color3.fromRGB(120, 230, 255)
 	)
-	return belt
+	local board = buildBoard(model, at * CFrame.new(TREADMILL_BELT.X / 2 + 4, 0, 0))
+	return belt, board
 end
 
 -- Chocadeira: mesa com 3 ninhos e lâmpada quente. Os ovos (EggService) ficam nos "slots".
@@ -4382,7 +5717,7 @@ local function buildPlot(parent: Instance, index: number): Plot
 		)
 	)
 
-	local treadmill = buildTreadmill(model, cframe * CFrame.new(21, 0, -16))
+	local treadmill, board = buildTreadmill(model, cframe * CFrame.new(21, 0, -16))
 	local incubator = buildIncubator(model, cframe * CFrame.new(-22, 0, -3))
 
 	local gui = billboard(beam, UDim2.fromScale(18, 3), Vector3.new(0, 2.4, 0), 250)
@@ -4400,6 +5735,7 @@ local function buildPlot(parent: Instance, index: number): Plot
 		sign = sign,
 		animals = animals,
 		treadmill = treadmill,
+		board = board,
 		incubator = incubator,
 		owner = nil,
 	}
@@ -4418,10 +5754,11 @@ local ROUTE_DECOR: { [string]: (Instance, any, Random, (number) -> Vector3) -> (
 			)
 		end
 	end,
-	Chiqueiro = function(parent, _route, rng, randomPoint)
-		for _ = 1, 12 do
-			local diameter = rng:NextNumber(10, 20)
-			decor(
+	Chiqueiro = function(parent, route, rng, randomPoint)
+		-- Poças de lama: deixam o jogador LENTO (client/SpeedMods lê a tag).
+		for _ = 1, 16 do
+			local diameter = rng:NextNumber(12, 22)
+			local puddle = decor(
 				block(
 					parent,
 					Vector3.new(0.3, diameter, diameter),
@@ -4431,6 +5768,27 @@ local ROUTE_DECOR: { [string]: (Instance, any, Random, (number) -> Vector3) -> (
 					Enum.PartType.Cylinder
 				)
 			)
+			puddle.Name = "Lama"
+			CollectionService:AddTag(puddle, "Lama")
+		end
+		-- Pistas de lama escorregadia: deixam RÁPIDO (atalhos para fugir do Porco Bravo).
+		local origin = route.origin
+		for _, angle in { 180, 250, 300 } do
+			local direction = CFrame.Angles(0, rad(angle), 0)
+			local center = CFrame.new(origin) * direction * CFrame.new(0, 0.2, -80)
+			local lane = decor(block(parent, Vector3.new(8, 0.3, 90), center, Color3.fromRGB(150, 95, 55), Enum.Material.SmoothPlastic))
+			lane.Name = "Escorrega"
+			lane.Reflectance = 0.25
+			CollectionService:AddTag(lane, "Escorrega")
+			for i = -4, 4 do
+				for _, side in { -1, 1 } do
+					local arm = decor(block(parent, Vector3.new(0.6, 0.08, 2.6), center * CFrame.new(side * 1.1, 0.2, i * 10) * CFrame.Angles(0, side * rad(-38), 0), Color3.fromRGB(255, 225, 150), Enum.Material.SmoothPlastic))
+					arm.CastShadow = false
+				end
+			end
+			local sign = decor(block(parent, Vector3.one, center * CFrame.new(0, 6, 0), route.theme))
+			sign.Transparency = 1
+			textLabel(billboard(sign, UDim2.fromScale(22, 3.2), Vector3.zero, 160), "Titulo", "🛝 LAMA ESCORREGADIA ⚡", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), Color3.fromRGB(255, 225, 150))
 		end
 	end,
 	Pasto = function(parent, _route, rng, randomPoint)
@@ -4492,7 +5850,8 @@ local function treasureTree(parent: Instance, center: Vector3, route): BasePart
 	model.Name = "ArvoreDoTesouro"
 	model.Parent = parent
 	local bark = Color3.fromRGB(135, 80, 40)
-	block(model, Vector3.new(5, CANOPY_TOP - 3, 5), CFrame.new(center + Vector3.new(0, (CANOPY_TOP - 3) / 2, 0)), bark, Enum.Material.Wood)
+	local trunk = block(model, Vector3.new(5, CANOPY_TOP - 3, 5), CFrame.new(center + Vector3.new(0, (CANOPY_TOP - 3) / 2, 0)), bark, Enum.Material.Wood)
+	trunk.Name = "Tronco"
 	for i = 0, 3 do
 		local side = CFrame.Angles(0, i * math.pi / 2, 0)
 		block(model, Vector3.new(3, 3, 5), CFrame.new(center) * side * CFrame.new(0, 1.5, 4.5), Style.shade(bark, -0.1), Enum.Material.Wood)
@@ -4508,7 +5867,7 @@ local function treasureTree(parent: Instance, center: Vector3, route): BasePart
 		local angle = rad(i * 52)
 		local at = center + Vector3.new(math.cos(angle) * 12, height - 0.5, math.sin(angle) * 12)
 		local color = if i > 6 then route.theme else Style.shade(route.theme, 0.35)
-		block(model, Vector3.new(6, 1, 6), CFrame.new(at) * CFrame.Angles(0, -angle, 0), color, Enum.Material.WoodPlanks)
+		block(model, Vector3.new(8, 1, 8), CFrame.new(at) * CFrame.Angles(0, -angle, 0), color, Enum.Material.WoodPlanks)
 	end
 
 	-- Baú dourado na copa.
@@ -4758,7 +6117,7 @@ function MapBuilder.build(): { plots: { Plot }, zones: { [string]: Zone }, porta
 end
 
 return MapBuilder
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">MissionService</string><ProtectedString name="Source"><![CDATA[-- Acompanha a missão atual de cada jogador, paga o prêmio ao completar e publica o estado
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001C"><Properties><string name="Name">MissionService</string><ProtectedString name="Source"><![CDATA[-- Acompanha a missão atual de cada jogador, paga o prêmio ao completar e publica o estado
 -- em atributos ("Missao*") para o painel do HUD e o guia.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -4792,6 +6151,10 @@ local function progressOf(profile, mission): (number, number)
 		return if Balance.hasAnimal(profile, mission.id, mission.goal) then 1 else 0, 1
 	elseif mission.kind == "route" then
 		return if profile.routes[mission.id] then 1 else 0, 1
+	elseif mission.kind == "equipped" then
+		return #(profile.equipped or {}), mission.goal
+	elseif mission.kind == "rebirth" then
+		return profile.rebirths or 0, mission.goal
 	end
 	return 0, 1
 end
@@ -4856,7 +6219,7 @@ function MissionService.init()
 end
 
 return MissionService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001C"><Properties><string name="Name">Notify</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001D"><Properties><string name="Name">Notify</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Remotes = require(ReplicatedStorage:WaitForChild("Shared").Remotes)
 
@@ -4888,7 +6251,7 @@ function Notify.reveal(player: Player, payload)
 end
 
 return Notify
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001D"><Properties><string name="Name">PassService</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001E"><Properties><string name="Name">PassService</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GamePasses = require(ReplicatedStorage:WaitForChild("Shared").Config.GamePasses)
@@ -4963,7 +6326,458 @@ function PassService.init()
 end
 
 return PassService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001E"><Properties><string name="Name">RouteService</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001F"><Properties><string name="Name">PetService</string><ProtectedString name="Source"><![CDATA[-- 🐾 Pets: os bichos equipados andam atrás do dono e dão bônus (Balance.petBonus).
+-- O servidor só cria os modelos em Workspace.Pets; cada cliente move todos eles
+-- (client/PetFollow), então eles andam lisinhos sem pesar o servidor.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local AnimalModel = require(Shared.AnimalModel)
+local Balance = require(Shared.Balance)
+
+local DataService = require(script.Parent.DataService)
+
+local PetService = {}
+
+local folder: Folder
+local foldersOf: { [Player]: Folder } = {}
+
+function PetService.refresh(player: Player)
+	local profile = DataService.get(player)
+	if foldersOf[player] then
+		foldersOf[player]:Destroy()
+		foldersOf[player] = nil
+	end
+	if not profile or not player.Parent then
+		return
+	end
+	local mine = Instance.new("Folder")
+	mine.Name = player.Name
+	mine:SetAttribute("Dono", player.UserId)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local start = if root then root.CFrame * CFrame.new(0, -3, 5) else CFrame.new(0, 0, 0)
+	local count = 0
+	for _, animalId in profile.equipped do
+		for _, animal in profile.animals do
+			if animal.id == animalId then
+				count += 1
+				local model = AnimalModel.build(animal.species, animal.rarity, animal.shiny, Balance.animalName(animal))
+				local tag = model.PrimaryPart and model.PrimaryPart:FindFirstChild("Tag")
+				if tag then
+					tag:Destroy()
+				end
+				model:ScaleTo(AnimalModel.petScale(animal.species))
+				model:SetAttribute("Slot", count)
+				model:PivotTo(start)
+				model.Parent = mine
+				break
+			end
+		end
+	end
+	mine:SetAttribute("Total", count)
+	mine.Parent = folder
+	foldersOf[player] = mine
+end
+
+function PetService.release(player: Player)
+	if foldersOf[player] then
+		foldersOf[player]:Destroy()
+	end
+	foldersOf[player] = nil
+end
+
+function PetService.init()
+	folder = Instance.new("Folder")
+	folder.Name = "Pets"
+	folder.Parent = Workspace
+	Players.PlayerRemoving:Connect(PetService.release)
+end
+
+return PetService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000020"><Properties><string name="Name">RaceService</string><ProtectedString name="Source"><![CDATA[-- 🏇 Corrida a cavalo (Rota da Pradaria): na largada, perto da chegada da rota, o jogador monta
+-- num cavalo (velocidade 60) e precisa passar pelos 8 arcos em volta da rota antes do tempo
+-- acabar. Ganha moedas e às vezes um ovo da Pradaria.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local AnimalModel = require(Shared.AnimalModel)
+local Balance = require(Shared.Balance)
+local Format = require(Shared.Format)
+local Species = require(Shared.Config.Species)
+local Style = require(Shared.Style)
+
+local DataService = require(script.Parent.DataService)
+local EggService = require(script.Parent.EggService)
+local FarmService = require(script.Parent.FarmService)
+local Notify = require(script.Parent.Notify)
+
+local RaceService = {}
+
+local ROUTE = "Pradaria"
+local CHECKPOINTS = 8
+local RACE_SECONDS = 50
+local HORSE_SPEED = 60
+local RING_RADIUS = 12
+local LOOP_RADIUS = 0.32
+local COOLDOWN = 10
+local REWARD = 2500
+local EGG_CHANCE = 0.4
+local EGG_LUCK = 3
+local HIP_RAISE = 2.8
+local GOLD = Color3.fromRGB(255, 205, 60)
+
+type Race = { target: number, ends: number, started: number, horse: Model, hip: number }
+
+local zone
+local rings: { Vector3 } = {}
+local racing: { [Player]: Race } = {}
+local lastRace: { [Player]: number } = {}
+local rng = Random.new()
+
+local function rootOf(player: Player): BasePart?
+	local character = player.Character
+	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+local function part(parent: Instance, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material?): Part
+	local p = Instance.new("Part")
+	p.Anchored = true
+	p.Size = size
+	p.CFrame = cframe
+	p.Color = color
+	p.Material = material or Enum.Material.Plastic
+	p.Parent = parent
+	return p
+end
+
+local function sign(adornee: BasePart, text: string, color: Color3, size: UDim2, offset: Vector3)
+	local gui = Instance.new("BillboardGui")
+	gui.Size = size
+	gui.StudsOffset = offset
+	gui.MaxDistance = 300
+	gui.LightInfluence = 0
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.FredokaOne
+	label.TextScaled = true
+	label.Text = text
+	label.TextColor3 = color
+	Style.outline(label, 4)
+	label.Parent = gui
+	gui.Parent = adornee
+end
+
+-- Arcos numerados em volta da rota; o cliente destaca o próximo de quem está correndo.
+local function buildCourse(parent: Instance)
+	local folder = Instance.new("Model")
+	folder.Name = "Corrida"
+	local radius = zone.size * LOOP_RADIUS
+	for i = 1, CHECKPOINTS do
+		local angle = math.pi / 2 + (i - 1) * (2 * math.pi / CHECKPOINTS)
+		rings[i] = zone.origin + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+	end
+	for i, at in rings do
+		local nextAt = rings[i % CHECKPOINTS + 1]
+		local facing = CFrame.lookAt(at, Vector3.new(nextAt.X, at.Y, nextAt.Z))
+		local arch = Instance.new("Model")
+		arch.Name = "Arco" .. i
+		local wood = Color3.fromRGB(150, 100, 55)
+		for _, x in { -RING_RADIUS, RING_RADIUS } do
+			part(arch, Vector3.new(1.4, 14, 1.4), facing * CFrame.new(x, 7, 0), wood, Enum.Material.WoodPlanks)
+		end
+		local bar = part(arch, Vector3.new(RING_RADIUS * 2 + 2, 1.6, 1.6), facing * CFrame.new(0, 14, 0), GOLD)
+		bar.Name = "Barra"
+		local glow = part(arch, Vector3.new(RING_RADIUS * 2 - 1.4, 12.4, 0.3), facing * CFrame.new(0, 6.8, 0), GOLD, Enum.Material.Neon)
+		glow.Name = "Brilho"
+		glow.Transparency = 0.85
+		glow.CanCollide = false
+		glow.CanQuery = false
+		glow.CanTouch = false
+		sign(bar, tostring(i), Color3.new(1, 1, 1), UDim2.fromScale(5, 5), Vector3.new(0, 4, 0))
+		arch.Parent = folder
+	end
+	Style.apply(folder)
+	folder.Parent = parent
+end
+
+local function dismount(player: Player, message: string?, color: Color3?)
+	local race = racing[player]
+	if not race then
+		return
+	end
+	racing[player] = nil
+	lastRace[player] = os.clock()
+	if race.horse then
+		race.horse:Destroy()
+	end
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.HipHeight = race.hip
+	end
+	player:SetAttribute("CorridaVelocidade", nil)
+	player:SetAttribute("CorridaAlvo", nil)
+	player:SetAttribute("CorridaFim", nil)
+	FarmService.applySpeed(player)
+	if message then
+		Notify.big(player, message, nil, color or GOLD)
+	end
+end
+
+-- Cavalo soldado embaixo do jogador; o jogador sobe (HipHeight) e fica montado.
+local function mount(player: Player): (Model?, number)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid then
+		return nil, 0
+	end
+	local hip = humanoid.HipHeight
+	humanoid.HipHeight = hip + HIP_RAISE
+	local horse = AnimalModel.build("Cavalo", 3, false, "Montaria", true)
+	local tag = horse.PrimaryPart and horse.PrimaryPart:FindFirstChild("Tag")
+	if tag then
+		tag:Destroy()
+	end
+	for _, descendant in horse:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Anchored = false
+			descendant.Massless = true
+			descendant.CanCollide = false
+			descendant.CanQuery = false
+			descendant.CanTouch = false
+		end
+	end
+	local horseRoot = horse.PrimaryPart :: BasePart
+	local offset = CFrame.new(0, -(humanoid.HipHeight + root.Size.Y / 2), 0.4)
+	horse:PivotTo(root.CFrame * offset)
+	local weld = Instance.new("Weld")
+	weld.Part0 = root
+	weld.Part1 = horseRoot
+	weld.C0 = offset
+	weld.Parent = horseRoot
+	horse.Name = "Montaria"
+	horse.Parent = character
+	return horse, hip
+end
+
+local function start(player: Player)
+	local profile = DataService.get(player)
+	local root = rootOf(player)
+	if not profile or not root or racing[player] then
+		return
+	end
+	if not profile.routes[ROUTE] then
+		Notify.toast(player, "🔒 Libere a Rota da Pradaria para correr", Color3.fromRGB(255, 120, 100))
+		return
+	end
+	if EggService.isCarrying(player) then
+		Notify.toast(player, "🥚 Leve o ovo para a Chocadeira antes de correr", Color3.fromRGB(255, 200, 120))
+		return
+	end
+	local wait = if lastRace[player] then lastRace[player] + COOLDOWN - os.clock() else 0
+	if wait > 0 then
+		Notify.toast(player, "🐴 O cavalo está descansando… " .. math.ceil(wait) .. "s", GOLD)
+		return
+	end
+	local horse, hip = mount(player)
+	if not horse then
+		return
+	end
+	racing[player] = { target = 1, ends = os.clock() + RACE_SECONDS, started = os.clock(), horse = horse, hip = hip }
+	player:SetAttribute("CorridaVelocidade", HORSE_SPEED)
+	player:SetAttribute("CorridaAlvo", 1)
+	player:SetAttribute("CorridaFim", Workspace:GetServerTimeNow() + RACE_SECONDS)
+	FarmService.applySpeed(player)
+	Notify.big(player, "🏇 VAI!", "Passe pelos " .. CHECKPOINTS .. " arcos em " .. RACE_SECONDS .. " segundos! Siga a seta", GOLD, "boost")
+end
+
+local function win(player: Player, race: Race)
+	local profile = DataService.get(player)
+	local seconds = os.clock() - race.started
+	dismount(player)
+	if not profile then
+		return
+	end
+	profile.stats.races = (profile.stats.races or 0) + 1
+	local coins = math.floor(REWARD * Balance.coinMultiplier(profile))
+	DataService.addCoins(player, coins)
+	DataService.push(player)
+	Notify.big(
+		player,
+		"🏆 CORRIDA COMPLETA!",
+		string.format("Tempo: %.1fs   +💰 %s", seconds, Format.number(coins)),
+		GOLD,
+		"revelar"
+	)
+	if rng:NextNumber() < EGG_CHANCE then
+		local luck = Balance.luck(profile, false, false) * EGG_LUCK
+		local rarity = Balance.rollRarity(luck, rng)
+		task.delay(2.5, function()
+			if player.Parent then
+				EggService.give(player, Species.roll(ROUTE, rng:NextNumber()), rarity, Balance.rollShiny(luck, rng), "🏇 OVO DA CORRIDA!")
+			end
+		end)
+	end
+end
+
+function RaceService.init(zones)
+	zone = zones[ROUTE]
+	if not zone then
+		return
+	end
+	local parent = zone.nodes.Parent :: Instance
+	buildCourse(parent)
+
+	-- Largada: placa + cavalo parado, perto da zona segura.
+	local post = Instance.new("Model")
+	post.Name = "Largada"
+	local at = CFrame.new(zone.safeCenter + Vector3.new(zone.safeRadius - 4, 0, -6))
+	for _, x in { -3, 3 } do
+		part(post, Vector3.new(0.8, 8, 0.8), at * CFrame.new(x, 4, 0), Color3.fromRGB(150, 100, 55), Enum.Material.WoodPlanks)
+	end
+	local banner = part(post, Vector3.new(8, 3, 0.4), at * CFrame.new(0, 7.5, 0), Color3.fromRGB(200, 50, 45))
+	banner.Name = "Faixa"
+	sign(banner, "🏇 CORRIDA A CAVALO", GOLD, UDim2.fromScale(16, 3), Vector3.new(0, 3, 0))
+	local statue = AnimalModel.build("Cavalo", 3, false, "Cavalo de Corrida", true)
+	statue:PivotTo(at * CFrame.new(-8, 0, 1) * CFrame.Angles(0, math.rad(90), 0))
+	statue.Parent = post
+	Style.apply(post)
+	post.Parent = parent
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Montar e correr"
+	prompt.ObjectText = "🏇 Corrida (" .. RACE_SECONDS .. "s)"
+	prompt.HoldDuration = 0.4
+	prompt.MaxActivationDistance = 12
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = banner
+	prompt.Triggered:Connect(start)
+
+	RunService.Heartbeat:Connect(function()
+		local now = os.clock()
+		for player, race in racing do
+			local root = rootOf(player)
+			if not root or not player.Parent then
+				dismount(player)
+			elseif (root.Position - zone.origin).Magnitude > zone.size then
+				dismount(player, "🏇 Você saiu da corrida", Color3.fromRGB(255, 120, 100))
+			elseif now > race.ends then
+				dismount(player, "⏰ O tempo acabou!", Color3.fromRGB(255, 120, 100))
+			else
+				local ring = rings[race.target]
+				local offset = root.Position - ring
+				if Vector3.new(offset.X, 0, offset.Z).Magnitude <= RING_RADIUS then
+					race.target += 1
+					if race.target > CHECKPOINTS then
+						win(player, race)
+					else
+						player:SetAttribute("CorridaAlvo", race.target)
+						Notify.toast(player, "✅ Arco " .. (race.target - 1) .. "/" .. CHECKPOINTS, GOLD, "coleta")
+					end
+				end
+			end
+		end
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		racing[player] = nil
+		lastRace[player] = nil
+	end)
+end
+
+-- Morreu/resetou montado: termina a corrida.
+function RaceService.onCharacter(player: Player)
+	if racing[player] then
+		racing[player] = nil
+		player:SetAttribute("CorridaVelocidade", nil)
+		player:SetAttribute("CorridaAlvo", nil)
+		player:SetAttribute("CorridaFim", nil)
+	end
+end
+
+return RaceService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000021"><Properties><string name="Name">RebirthService</string><ProtectedString name="Source"><![CDATA[-- ♻️ Renascer: com a Rota do Pasto liberada e moedas suficientes, o jogador recomeça
+-- (moedas, materiais, melhorias, treino, rotas e bichos da fazenda) mas fica com os pets
+-- equipados, os ovos, o índice e ganha bônus para sempre: +50% moedas, +10% sorte e +1 pet.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Balance = require(Shared.Balance)
+local Format = require(Shared.Format)
+
+local Basket = require(script.Parent.Basket)
+local DataService = require(script.Parent.DataService)
+local EquipmentService = require(script.Parent.EquipmentService)
+local FarmService = require(script.Parent.FarmService)
+local Notify = require(script.Parent.Notify)
+
+local RebirthService = {}
+
+local PURPLE = Color3.fromRGB(200, 120, 255)
+
+-- Avisado depois de renascer (init.server atualiza treino/placa).
+RebirthService.onRebirth = nil :: ((Player) -> ())?
+
+function RebirthService.rebirth(player: Player): (boolean, string?)
+	local profile = DataService.get(player)
+	if not profile then
+		return false, "Carregando seu progresso..."
+	end
+	local ok, reason = Balance.canRebirth(profile, profile.coins)
+	if not ok then
+		return false, reason
+	end
+
+	DataService.spendCoins(player, profile.coins)
+	profile.materials = {}
+	for id in profile.upgrades do
+		profile.upgrades[id] = 0
+	end
+	profile.training = 0
+	profile.routes = { Galinheiro = true }
+	local kept = {}
+	for _, animal in profile.animals do
+		if Balance.isEquipped(profile, animal.id) then
+			table.insert(kept, animal)
+		end
+	end
+	if #kept == 0 then
+		table.insert(kept, { id = "a" .. profile.nextAnimalId, species = "Galinha", rarity = 1, shiny = false })
+		profile.nextAnimalId += 1
+	end
+	profile.animals = kept
+	profile.rebirths = (profile.rebirths or 0) + 1
+	profile.stats.rebirths = profile.rebirths
+
+	Basket.clear(player)
+	EquipmentService.refresh(player)
+	FarmService.decorate(player)
+	FarmService.reloadAnimals(player)
+	if RebirthService.onRebirth then
+		RebirthService.onRebirth(player)
+	end
+	FarmService.teleportHome(player)
+	DataService.push(player)
+
+	Notify.bigAll(
+		"♻️ " .. player.DisplayName .. " RENASCEU! (x" .. profile.rebirths .. ")",
+		"Agora: 💰 x" .. string.format("%.1f", 1 + Balance.REBIRTH_COIN_BONUS * profile.rebirths)
+			.. " moedas • 🐾 " .. Balance.petSlots(profile) .. " pets • próximo renascer: 💰 "
+			.. Format.number(Balance.rebirthCost(profile)),
+		PURPLE,
+		"revelar"
+	)
+	return true, nil
+end
+
+return RebirthService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000022"><Properties><string name="Name">RouteService</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -5218,8 +7032,9 @@ local function collect(player: Player, route, def, luckMult: number?): boolean
 		local rarity = Balance.rollRarity(luck, rng)
 		local shiny = Balance.rollShiny(luck, rng)
 		profile.stats.nests += 1
-		-- O ninho dá um ovo; ele choca na Chocadeira da fazenda (EggService).
-		EggService.give(player, route.species, rarity, shiny, "🥚 NINHO ABERTO!")
+		-- O ninho dá um ovo que o jogador leva nos braços até a Chocadeira (EggService).
+		local species = Species.roll(route.id, rng:NextNumber())
+		EggService.give(player, species, rarity, shiny, "🥚 NINHO ABERTO!", true)
 		return true
 	end
 
@@ -5382,7 +7197,7 @@ local function spawnFixedNest(routeId: string, tierIndex: number)
 		return profile ~= nil and (requirement == nil or Balance.walkSpeed(profile) >= requirement)
 	end
 	prompt.PromptButtonHoldBegan:Connect(function(player)
-		if fastEnough(player) then
+		if fastEnough(player) and not EggService.isCarrying(player) then
 			GuardianService.alert(player, root.Position, 1)
 		end
 	end)
@@ -5394,6 +7209,10 @@ local function spawnFixedNest(routeId: string, tierIndex: number)
 		end
 		if not fastEnough(player) then
 			Notify.toast(player, "🔒 Precisa de ⚡" .. requirement .. " para o " .. tier.name .. ". Treine na esteira!", Color3.fromRGB(255, 120, 100))
+			return
+		end
+		if EggService.isCarrying(player) or player:GetAttribute("OvoCaido") then
+			Notify.toast(player, "🥚 Você já tem um ovo! Leve para a 🐣 Chocadeira antes de abrir outro", Color3.fromRGB(255, 200, 120))
 			return
 		end
 		taken = true
@@ -5500,7 +7319,202 @@ function RouteService.init(zoneMap, portals: { [string]: BasePart })
 end
 
 return RouteService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001F"><Properties><string name="Name">Teleport</string><ProtectedString name="Source"><![CDATA[local Teleport = {}
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000023"><Properties><string name="Name">StampedeService</string><ProtectedString name="Source"><![CDATA[-- 🐄 Estouro da Boiada (Rota do Pasto): de tempos em tempos uma faixa vermelha pisca no chão
+-- perto de alguém e, 3 segundos depois, uma boiada atravessa correndo. Quem estiver na faixa é
+-- atropelado (perde parte da cesta e o ovo cai). Quem escapar ganha moedas.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local AnimalModel = require(Shared.AnimalModel)
+local Format = require(Shared.Format)
+
+local DataService = require(script.Parent.DataService)
+local GuardianService = require(script.Parent.GuardianService)
+local Notify = require(script.Parent.Notify)
+
+local StampedeService = {}
+
+local ROUTE = "Pasto"
+local INTERVAL_MIN, INTERVAL_MAX = 35, 60
+local WARN_SECONDS = 3
+local LANE_WIDTH = 18
+local COW_COUNT = 7
+local COW_SPEED = 45
+local COW_SCALE = 1.3
+local HIT_RADIUS = 5.5
+local DROP_FRACTION = 0.2
+local ESCAPE_REWARD = 250
+local RED = Color3.fromRGB(255, 60, 50)
+
+local rng = Random.new()
+
+local function rootOf(player: Player): BasePart?
+	local character = player.Character
+	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+local function flat(v: Vector3): Vector3
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+local function inZone(zone, position: Vector3): boolean
+	local offset = position - zone.origin
+	local half = zone.size / 2
+	return math.abs(offset.X) <= half and math.abs(offset.Z) <= half
+end
+
+local function inSafe(zone, position: Vector3): boolean
+	return (flat(position) - flat(zone.safeCenter)).Magnitude <= zone.safeRadius
+end
+
+local function playersIn(zone): { Player }
+	local list = {}
+	for _, player in Players:GetPlayers() do
+		local root = rootOf(player)
+		if root and inZone(zone, root.Position) and not inSafe(zone, root.Position) then
+			table.insert(list, player)
+		end
+	end
+	return list
+end
+
+local function run(zone)
+	local targets = playersIn(zone)
+	if #targets == 0 then
+		return
+	end
+	local victim = targets[rng:NextInteger(1, #targets)]
+	local aim = rootOf(victim)
+	if not aim then
+		return
+	end
+	local half = zone.size / 2
+	-- Direção: ao longo de X ou de Z, passando pela posição de alguém.
+	local alongX = rng:NextNumber() < 0.5
+	local sign = if rng:NextNumber() < 0.5 then 1 else -1
+	local direction = if alongX then Vector3.new(sign, 0, 0) else Vector3.new(0, 0, sign)
+	local laneCenter = Vector3.new(
+		if alongX then zone.origin.X else aim.Position.X,
+		0,
+		if alongX then aim.Position.Z else zone.origin.Z
+	)
+	local start = laneCenter - direction * (half + 10)
+	local finish = laneCenter + direction * (half + 10)
+
+	-- Aviso: faixa vermelha piscando no chão.
+	local stripe = Instance.new("Part")
+	stripe.Name = "FaixaEstouro"
+	stripe.Anchored = true
+	stripe.CanCollide = false
+	stripe.CanQuery = false
+	stripe.CanTouch = false
+	stripe.Material = Enum.Material.Neon
+	stripe.Color = RED
+	stripe.Size = if alongX then Vector3.new(zone.size, 0.2, LANE_WIDTH) else Vector3.new(LANE_WIDTH, 0.2, zone.size)
+	stripe.CFrame = CFrame.new(laneCenter + Vector3.new(0, 0.35, 0))
+	stripe.Parent = zone.nodes
+	for _, player in targets do
+		Notify.big(player, "🐄 ESTOURO DA BOIADA!", "Saia da faixa vermelha! 3… 2… 1…", RED, "galo")
+	end
+	local blinkEnds = os.clock() + WARN_SECONDS
+	while os.clock() < blinkEnds do
+		stripe.Transparency = if stripe.Transparency < 0.5 then 0.75 else 0.35
+		task.wait(0.2)
+	end
+	stripe.Transparency = 0.8
+
+	-- Boiada: vacas bravas em formação, correndo pela faixa.
+	local cows = {}
+	for i = 1, COW_COUNT do
+		local model = AnimalModel.build("Vaca", 1, false, "Boiada", true)
+		local tag = model.PrimaryPart and model.PrimaryPart:FindFirstChild("Tag")
+		if tag then
+			tag:Destroy()
+		end
+		model:ScaleTo(COW_SCALE)
+		local sideways = Vector3.new(direction.Z, 0, -direction.X)
+		local offset = sideways * rng:NextNumber(-LANE_WIDTH / 2 + 2, LANE_WIDTH / 2 - 2) - direction * (i - 1) * 4.5
+		model:PivotTo(CFrame.lookAt(start + offset, start + offset + direction))
+		model:SetAttribute("Acao", "correr")
+		model.Parent = zone.nodes
+		table.insert(cows, { model = model, root = model.PrimaryPart :: BasePart, offset = offset })
+	end
+
+	local hit: { [Player]: boolean } = {}
+	local travelled = 0
+	local total = (finish - start).Magnitude + COW_COUNT * 4.5
+	local connection
+	connection = RunService.Heartbeat:Connect(function(dt)
+		travelled += COW_SPEED * dt
+		local now = os.clock()
+		for index, cow in cows do
+			local at = start + cow.offset + direction * travelled
+			local hop = math.abs(math.sin(now * 14 + index)) * 0.8
+			cow.root.CFrame = CFrame.lookAt(at + Vector3.new(0, hop, 0), at + Vector3.new(0, hop, 0) + direction)
+			for _, player in Players:GetPlayers() do
+				local root = rootOf(player)
+				if root and not hit[player] and not inSafe(zone, root.Position) then
+					local offset = root.Position - at
+					if flat(offset).Magnitude <= HIT_RADIUS * COW_SCALE and math.abs(offset.Y) < 8 then
+						hit[player] = true
+						GuardianService.knock(player, at, zone, "Estouro da Boiada", DROP_FRACTION)
+					end
+				end
+			end
+		end
+		if travelled >= total then
+			connection:Disconnect()
+		end
+	end)
+	while connection.Connected do
+		task.wait(0.2)
+	end
+	for _, cow in cows do
+		cow.model:Destroy()
+	end
+	stripe:Destroy()
+
+	for _, player in targets do
+		if player.Parent and not hit[player] then
+			local profile = DataService.get(player)
+			if profile then
+				profile.stats.stampedes = (profile.stats.stampedes or 0) + 1
+				DataService.addCoins(player, ESCAPE_REWARD)
+				DataService.push(player)
+				Notify.toast(player, "🐄 Você escapou do estouro! +💰 " .. Format.number(ESCAPE_REWARD), Color3.fromRGB(95, 235, 70), "boost")
+			end
+		end
+	end
+end
+
+function StampedeService.init(zones)
+	local zone = zones[ROUTE]
+	if not zone then
+		return
+	end
+	task.spawn(function()
+		while true do
+			task.wait(rng:NextNumber(INTERVAL_MIN, INTERVAL_MAX))
+			local ok, err = pcall(run, zone)
+			if not ok then
+				warn("[StampedeService]", err)
+			end
+		end
+	end)
+end
+
+-- Para testar no Studio: Workspace:SetAttribute("ForcarEstouro", true).
+function StampedeService.force(zones)
+	local zone = zones[ROUTE]
+	if zone then
+		task.spawn(run, zone)
+	end
+end
+
+return StampedeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000024"><Properties><string name="Name">Teleport</string><ProtectedString name="Source"><![CDATA[local Teleport = {}
 
 function Teleport.to(player: Player, target: CFrame): boolean
 	local character = player.Character
@@ -5518,18 +7532,21 @@ function Teleport.to(player: Player, target: CFrame): boolean
 end
 
 return Teleport
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000020"><Properties><string name="Name">TrainingService</string><ProtectedString name="Source"><![CDATA[-- Treino na esteira: quem está em cima da lona corre sozinho (animação no cliente) e ganha
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000025"><Properties><string name="Name">TrainingService</string><ProtectedString name="Source"><![CDATA[-- Treino na esteira: quem está em cima da lona corre sozinho (animação no cliente) e ganha
 -- Balance.trainGain pontos por segundo; cada nível custa um pouco mais (Balance.trainProgress).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
+local Format = require(Shared.Format)
 local Guardians = require(Shared.Config.Guardians)
+local Upgrades = require(Shared.Config.Upgrades)
 
 local DataService = require(script.Parent.DataService)
 local FarmService = require(script.Parent.FarmService)
 local Notify = require(script.Parent.Notify)
+local UpgradeService = require(script.Parent.UpgradeService)
 
 local TrainingService = {}
 
@@ -5598,15 +7615,70 @@ local function tick(player: Player)
 	end
 end
 
+-- Escreve na placa da esteira do jogador: nível, ganho agora ▶ depois e preço.
+function TrainingService.refreshBoard(player: Player)
+	local profile = DataService.get(player)
+	local plot = FarmService.plotFor(player)
+	if not profile or not plot then
+		return
+	end
+	local board = plot.board
+	local def = Upgrades.byId.Esteira
+	local level = profile.upgrades.Esteira or 0
+	board.level.Text = "Nível " .. level .. "/" .. def.max
+	if level >= def.max then
+		board.gain.Text = "+" .. Balance.trainGain(profile) .. "/s"
+		board.price.Text = "⭐ MÁXIMO"
+	else
+		board.gain.Text = "+" .. Balance.trainGain(profile) .. "/s ▶ +" .. Balance.trainGainAt(profile, level + 1) .. "/s"
+		board.price.Text = "💰 " .. Format.number(Upgrades.cost("Esteira", level))
+	end
+end
+
+function TrainingService.clearBoard(plot)
+	plot.board.level.Text = "Nível -"
+	plot.board.gain.Text = "Treine mais rápido"
+	plot.board.price.Text = ""
+end
+
 function TrainingService.setup(player: Player)
 	local profile = DataService.get(player)
 	player:SetAttribute("Treino", if profile then profile.training or 0 else 0)
 	player:SetAttribute("TreinoMax", Balance.TRAIN_MAX)
+	TrainingService.refreshBoard(player)
 end
 
 function TrainingService.init(plots)
 	for _, plot in plots do
 		table.insert(belts, plot.treadmill)
+		TrainingService.clearBoard(plot)
+		-- Comprar a Esteira Turbo direto na placa.
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText = "Melhorar"
+		prompt.ObjectText = "⚡ Esteira Turbo"
+		prompt.HoldDuration = 0.3
+		prompt.MaxActivationDistance = 12
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = plot.board.part
+		prompt.Triggered:Connect(function(player)
+			if plot.owner ~= player then
+				Notify.toast(player, "Essa esteira é de outro jogador", Color3.fromRGB(255, 120, 100))
+				return
+			end
+			local ok, message = UpgradeService.buy(player, "Esteira")
+			if ok then
+				local profile = DataService.get(player)
+				Notify.big(
+					player,
+					"⚡ ESTEIRA TURBO NÍVEL " .. (profile.upgrades.Esteira or 0) .. "!",
+					"Agora treina +" .. Balance.trainGain(profile) .. " por segundo",
+					Color3.fromRGB(120, 230, 255),
+					"comprar"
+				)
+			else
+				Notify.toast(player, message or "Não deu", Color3.fromRGB(255, 120, 100))
+			end
+		end)
 	end
 	task.spawn(function()
 		while true do
@@ -5622,7 +7694,7 @@ function TrainingService.init(plots)
 end
 
 return TrainingService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000021"><Properties><string name="Name">TreasureService</string><ProtectedString name="Source"><![CDATA[-- Baú do Tesouro no topo da árvore de cada rota. Cada jogador pode abrir a cada 5 minutos.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000026"><Properties><string name="Name">TreasureService</string><ProtectedString name="Source"><![CDATA[-- Baú do Tesouro no topo da árvore de cada rota. Cada jogador pode abrir a cada 5 minutos.
 -- Os itens vão para a cesta (ainda precisa levar para casa); as moedas entram na hora.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -5714,8 +7786,56 @@ function TreasureService.init(zones)
 end
 
 return TreasureService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000027"><Properties><string name="Name">UpgradeService</string><ProtectedString name="Source"><![CDATA[-- Compra de melhorias (Loja e placa da esteira usam a mesma função).
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Upgrades = require(ReplicatedStorage:WaitForChild("Shared").Config.Upgrades)
+
+local Basket = require(script.Parent.Basket)
+local DataService = require(script.Parent.DataService)
+local EquipmentService = require(script.Parent.EquipmentService)
+local FarmService = require(script.Parent.FarmService)
+
+local UpgradeService = {}
+
+-- Avisado depois de cada compra (init.server liga na placa da esteira).
+UpgradeService.onBought = nil :: ((Player, string) -> ())?
+
+function UpgradeService.buy(player: Player, upgradeId: string): (boolean, string?)
+	local def = Upgrades.byId[upgradeId]
+	if not def then
+		return false, "Melhoria inválida"
+	end
+	local profile = DataService.get(player)
+	if not profile then
+		return false, "Carregando seu progresso..."
+	end
+	local level = profile.upgrades[upgradeId] or 0
+	if level >= def.max then
+		return false, "Nível máximo!"
+	end
+	if not DataService.spendCoins(player, Upgrades.cost(upgradeId, level)) then
+		return false, "Moedas insuficientes"
+	end
+	profile.upgrades[upgradeId] = level + 1
+	if upgradeId == "Velocidade" or upgradeId == "Pulo" then
+		FarmService.applySpeed(player)
+	elseif upgradeId == "Cesta" then
+		Basket.refresh(player)
+	elseif upgradeId == "Fazenda" then
+		FarmService.decorate(player)
+	end
+	EquipmentService.refresh(player)
+	DataService.push(player)
+	if UpgradeService.onBought then
+		UpgradeService.onBought(player, upgradeId)
+	end
+	return true, def.emoji .. " " .. def.name .. " nível " .. (level + 1) .. "!"
+end
+
+return UpgradeService
 ]]></ProtectedString></Properties></Item></Item></Item></Item>
-<Item class="StarterPlayer" referent="RBX0000003F"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX0000003E"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX0000003D"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+<Item class="StarterPlayer" referent="RBX00000049"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000048"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000047"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -5731,6 +7851,10 @@ local Treadmill = require(script.Treadmill)
 local Punch = require(script.Punch)
 local Rainbow = require(script.Rainbow)
 local Biome = require(script.Biome)
+local AnimalAnimator = require(script.AnimalAnimator)
+local PetFollow = require(script.PetFollow)
+local CarryPose = require(script.CarryPose)
+local SpeedMods = require(script.SpeedMods)
 local Welcome = require(script.UI.Welcome)
 local MissionPanel = require(script.UI.MissionPanel)
 local TrainingPanel = require(script.UI.TrainingPanel)
@@ -5913,6 +8037,32 @@ Treadmill.start()
 Punch.start()
 Rainbow.start()
 Biome.start()
+AnimalAnimator.start()
+PetFollow.start()
+CarryPose.start()
+SpeedMods.start()
+
+-- Corrida a cavalo: o próximo arco brilha forte; os outros ficam apagadinhos.
+local function highlightArches()
+	local target = player:GetAttribute("CorridaAlvo")
+	local world = Workspace:FindFirstChild("Mundo")
+	local course = world and world:FindFirstChild("Corrida", true)
+	if not course then
+		return
+	end
+	for _, arch in course:GetChildren() do
+		local glow = arch:FindFirstChild("Brilho")
+		if glow and glow:IsA("BasePart") then
+			glow.Transparency = if target and arch.Name == "Arco" .. target then 0.25 else 0.85
+		end
+	end
+end
+player:GetAttributeChangedSignal("CorridaAlvo"):Connect(function()
+	highlightArches()
+	if player:GetAttribute("CorridaAlvo") then
+		Sfx.play("coleta")
+	end
+end)
 
 -- Galo cantando quando o Galo Bravo começa a correr atrás de você.
 player:GetAttributeChangedSignal("Perseguido"):Connect(function()
@@ -5929,7 +8079,222 @@ while true do
 	TrainingPanel.tick()
 	task.wait(0.5)
 end
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX00000025"><Properties><string name="Name">Biome</string><ProtectedString name="Source"><![CDATA[-- Cada rota tem a luz do seu bioma (lamaçal mais quente, savana dourada…). Ao entrar numa
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX0000002B"><Properties><string name="Name">AnimalAnimator</string><ProtectedString name="Source"><![CDATA[-- Dá vida aos bichos (tag "Bicho", ver AnimalModel): patas andando conforme a velocidade,
+-- cabeça balançando, rabo abanando, asas batendo quando correm, e as ações paradas que o
+-- servidor pede no atributo "Acao" (farejar, comer, dormir, tonto, desmaiado).
+-- Tudo roda só no cliente (Motor6D.Transform), então não pesa a rede.
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local AnimalModel = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared").AnimalModel)
+
+local AnimalAnimator = {}
+
+local MAX_DISTANCE = 220
+local LOOK_DISTANCE = 18
+local LEG_SWING = 0.75
+local SLEEP_TEXT = "💤"
+
+type Rig = {
+	model: Model,
+	root: BasePart,
+	groups: { [string]: { Motor6D } },
+	lastPos: Vector3,
+	lastMove: number,
+	speed: number,
+	phase: number,
+	seed: number,
+	scale: number,
+	zzz: BillboardGui?,
+	scans: number,
+}
+
+local rigs: { [Model]: Rig } = {}
+local player = Players.LocalPlayer
+
+local function collect(rig: Rig)
+	rig.groups = {}
+	for _, descendant in rig.model:GetDescendants() do
+		if descendant:IsA("Motor6D") then
+			local list = rig.groups[descendant.Name]
+			if not list then
+				list = {}
+				rig.groups[descendant.Name] = list
+			end
+			table.insert(list, descendant)
+		end
+	end
+	rig.scans += 1
+end
+
+local function track(model: Instance)
+	if not model:IsA("Model") or rigs[model] then
+		return
+	end
+	local root = model.PrimaryPart or model:FindFirstChild("Root")
+	if not root then
+		return
+	end
+	local extents = model:GetExtentsSize()
+	local rig: Rig = {
+		model = model,
+		root = root :: BasePart,
+		groups = {},
+		lastPos = (root :: BasePart).Position,
+		lastMove = os.clock(),
+		speed = 0,
+		phase = math.random() * 10,
+		seed = math.random() * 100,
+		scale = math.max(extents.Y / 4, 0.5),
+		zzz = nil,
+		scans = 0,
+	}
+	collect(rig)
+	rigs[model] = rig
+end
+
+local function setGroup(rig: Rig, name: string, transform: CFrame)
+	local list = rig.groups[name]
+	if list then
+		for _, motor in list do
+			motor.Transform = transform
+		end
+	end
+end
+
+local function sleepBubble(rig: Rig, asleep: boolean)
+	if asleep and not rig.zzz then
+		local gui = Instance.new("BillboardGui")
+		gui.Name = "Zzz"
+		gui.Size = UDim2.fromOffset(60, 60)
+		gui.StudsOffset = Vector3.new(1.5, 3 + rig.scale * 3, 0)
+		gui.MaxDistance = 90
+		gui.LightInfluence = 0
+		local label = Instance.new("TextLabel")
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.fromScale(1, 1)
+		label.TextScaled = true
+		label.Text = SLEEP_TEXT
+		label.Parent = gui
+		gui.Parent = rig.root
+		rig.zzz = gui
+	elseif not asleep and rig.zzz then
+		rig.zzz:Destroy()
+		rig.zzz = nil
+	end
+end
+
+local function animate(rig: Rig, dt: number, now: number, camera: Vector3, me: Vector3?)
+	local root = rig.root
+	local position = root.Position
+	if (position - camera).Magnitude > MAX_DISTANCE then
+		return
+	end
+	if next(rig.groups) == nil and rig.scans < 5 then
+		collect(rig)
+	end
+
+	-- Velocidade pelo quanto andou (o servidor/cliente move o Root). Os passos chegam da rede
+	-- aos pulinhos, então mede entre mudanças e suaviza.
+	local moved = Vector3.new(position.X - rig.lastPos.X, 0, position.Z - rig.lastPos.Z).Magnitude
+	local raw = rig.speed
+	if moved > 0.02 then
+		raw = moved / math.max(now - rig.lastMove, dt)
+		rig.lastMove = now
+		rig.lastPos = position
+	elseif now - rig.lastMove > 0.3 then
+		raw = 0
+		rig.lastPos = position
+	end
+	rig.speed += (math.min(raw, 80) - rig.speed) * math.min(1, dt * 8)
+
+	local action = rig.model:GetAttribute("Acao")
+	local stride = rig.speed / rig.scale
+	local walking = math.clamp(stride / 6, 0, 1)
+	rig.phase += dt * (4 + math.min(stride, 40) * 0.55)
+	local swing = math.sin(rig.phase) * LEG_SWING * walking
+	local t = now + rig.seed
+
+	-- Patas: diagonais juntas (frente-esquerda com trás-direita).
+	local a, b = CFrame.Angles(swing, 0, 0), CFrame.Angles(-swing, 0, 0)
+	setGroup(rig, "legFL", a)
+	setGroup(rig, "legBR", a)
+	setGroup(rig, "legFR", b)
+	setGroup(rig, "legBL", b)
+	setGroup(rig, "legL", a)
+	setGroup(rig, "legR", b)
+
+	-- Cabeça: balança andando, abaixa para farejar/comer, olha para você quando está perto.
+	local pitch = math.sin(rig.phase * 2) * 0.06 * walking
+	local yaw = 0
+	local roll = 0
+	if action == "farejar" then
+		pitch = -0.45 + math.sin(t * 7) * 0.1
+		yaw = math.sin(t * 1.7) * 0.4
+	elseif action == "comer" then
+		pitch = -0.7 + math.abs(math.sin(t * 5)) * 0.2
+	elseif action == "dormir" or action == "desmaiado" then
+		pitch = -0.35 + math.sin(t * 1.5) * 0.04
+	elseif action == "tonto" then
+		roll = math.sin(t * 9) * 0.3
+		yaw = math.cos(t * 9) * 0.3
+	elseif walking < 0.2 and me and (me - position).Magnitude < LOOK_DISTANCE then
+		local rel = root.CFrame:PointToObjectSpace(me)
+		yaw = math.clamp(math.atan2(-rel.X, -rel.Z), -0.9, 0.9)
+		pitch = 0.1
+	else
+		yaw = math.sin(t * 0.6) * 0.15
+	end
+	setGroup(rig, "head", CFrame.Angles(pitch, yaw, roll))
+
+	-- Rabo abana; mais rápido correndo.
+	local wagSpeed = if action == "correr" or walking > 0.6 then 16 else 6
+	setGroup(rig, "tail", CFrame.Angles(0, math.sin(t * wagSpeed) * 0.35, 0))
+
+	-- Asas: batem correndo ou de vez em quando.
+	local flap = 0
+	if action == "correr" or walking > 0.8 then
+		flap = math.abs(math.sin(t * 20)) * 0.9
+	elseif math.sin(t * 0.7) > 0.97 then
+		flap = math.abs(math.sin(t * 18)) * 0.6
+	end
+	setGroup(rig, "wingR", CFrame.Angles(0, 0, flap))
+	setGroup(rig, "wingL", CFrame.Angles(0, 0, -flap))
+
+	sleepBubble(rig, action == "dormir")
+end
+
+function AnimalAnimator.start()
+	for _, model in CollectionService:GetTagged(AnimalModel.ANIMATED_TAG) do
+		track(model)
+	end
+	CollectionService:GetInstanceAddedSignal(AnimalModel.ANIMATED_TAG):Connect(function(model)
+		task.defer(track, model)
+	end)
+	CollectionService:GetInstanceRemovedSignal(AnimalModel.ANIMATED_TAG):Connect(function(model)
+		rigs[model] = nil
+	end)
+
+	RunService.Stepped:Connect(function(_, dt)
+		local now = os.clock()
+		local camera = Workspace.CurrentCamera.CFrame.Position
+		local character = player.Character
+		local me = character and character:FindFirstChild("HumanoidRootPart")
+		local myPosition = if me then (me :: BasePart).Position else nil
+		for model, rig in rigs do
+			if not model.Parent then
+				rigs[model] = nil
+			else
+				animate(rig, dt, now, camera, myPosition)
+			end
+		end
+	end)
+end
+
+return AnimalAnimator
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002C"><Properties><string name="Name">Biome</string><ProtectedString name="Source"><![CDATA[-- Cada rota tem a luz do seu bioma (lamaçal mais quente, savana dourada…). Ao entrar numa
 -- rota a cor da tela muda devagar; no centro/fazenda volta ao normal.
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
@@ -5979,7 +8344,46 @@ function Biome.start()
 end
 
 return Biome
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000026"><Properties><string name="Name">DoubleJump</string><ProtectedString name="Source"><![CDATA[-- Pulo duplo/triplo das Botas de Pulo. JumpRequest dispara tanto no teclado quanto no
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002D"><Properties><string name="Name">CarryPose</string><ProtectedString name="Source"><![CDATA[-- Pose de carregar o ovo: quem tem o atributo "CarregandoOvo" no personagem fica com os dois
+-- braços esticados para frente, segurando o ovo. A animação de andar é aplicada antes do
+-- Stepped, então aqui a gente sobrescreve o Transform dos ombros/cotovelos por cima.
+-- Funciona com Motor6D e com AnimationConstraint (juntas novas dos avatares R15).
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local CarryPose = {}
+
+local ATTRIBUTE = "CarregandoOvo"
+-- Braço para frente (quase 90°) e um pouco para dentro; cotovelo levemente dobrado.
+local POSES: { [string]: { holder: string, pose: CFrame } } = {
+	RightShoulder = { holder = "RightUpperArm", pose = CFrame.Angles(math.rad(85), 0, math.rad(-12)) },
+	LeftShoulder = { holder = "LeftUpperArm", pose = CFrame.Angles(math.rad(85), 0, math.rad(12)) },
+	RightElbow = { holder = "RightLowerArm", pose = CFrame.Angles(math.rad(12), 0, 0) },
+	LeftElbow = { holder = "LeftLowerArm", pose = CFrame.Angles(math.rad(12), 0, 0) },
+	-- R6
+	["Right Shoulder"] = { holder = "Torso", pose = CFrame.Angles(0, 0, math.rad(90)) },
+	["Left Shoulder"] = { holder = "Torso", pose = CFrame.Angles(0, 0, math.rad(-90)) },
+}
+
+function CarryPose.start()
+	RunService.Stepped:Connect(function()
+		for _, player in Players:GetPlayers() do
+			local character = player.Character
+			if character and character:GetAttribute(ATTRIBUTE) == true then
+				for name, joint in POSES do
+					local holder = character:FindFirstChild(joint.holder)
+					local found = holder and holder:FindFirstChild(name)
+					if found and (found:IsA("Motor6D") or found:IsA("AnimationConstraint")) then
+						(found :: any).Transform = joint.pose
+					end
+				end
+			end
+		end
+	end)
+end
+
+return CarryPose
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002E"><Properties><string name="Name">DoubleJump</string><ProtectedString name="Source"><![CDATA[-- Pulo duplo/triplo das Botas de Pulo. JumpRequest dispara tanto no teclado quanto no
 -- botão de pular do celular. Os pulos extras recarregam ao encostar no chão.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -6070,7 +8474,7 @@ function DoubleJump.start()
 end
 
 return DoubleJump
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000027"><Properties><string name="Name">Effects</string><ProtectedString name="Source"><![CDATA[-- Efeitos pedidos pelo servidor que precisam rodar no cliente (o personagem é do cliente).
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002F"><Properties><string name="Name">Effects</string><ProtectedString name="Source"><![CDATA[-- Efeitos pedidos pelo servidor que precisam rodar no cliente (o personagem é do cliente).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -6158,7 +8562,7 @@ function Effects.start()
 end
 
 return Effects
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000028"><Properties><string name="Name">Guide</string><ProtectedString name="Source"><![CDATA[-- Diz ao jogador o que fazer agora, em poucas palavras, e mostra o caminho:
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000030"><Properties><string name="Name">Guide</string><ProtectedString name="Source"><![CDATA[-- Diz ao jogador o que fazer agora, em poucas palavras, e mostra o caminho:
 -- trilha de bolinhas no chão + seta pulando em cima do objetivo, ou seta num botão do menu.
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -6300,6 +8704,79 @@ local function myTreadmill(): Vector3?
 	return nil
 end
 
+-- Placa de melhoria ao lado da minha esteira.
+local function myBoard(): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local lotes = world and world:FindFirstChild("Lotes")
+	if not lotes then
+		return nil
+	end
+	for _, lote in lotes:GetChildren() do
+		for _, label in lote:GetDescendants() do
+			if label:IsA("TextLabel") and label.Name == "Dono" and string.find(label.Text, player.DisplayName, 1, true) then
+				local board = lote:FindFirstChild("Esteira") and lote.Esteira:FindFirstChild("PlacaEsteira")
+				return if board then (board :: BasePart).Position else nil
+			end
+		end
+	end
+	return nil
+end
+
+local function zoneChild(routeId: string, name: string): Instance?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	return zone and zone:FindFirstChild(name, true)
+end
+
+-- Arco N da corrida da Pradaria.
+local function raceArch(index: number): Vector3?
+	local arch = zoneChild("Pradaria", "Arco" .. index)
+	return if arch then (arch :: Model):GetPivot().Position else nil
+end
+
+local function raceStart(): Vector3?
+	local post = zoneChild("Pradaria", "Largada")
+	return if post then (post :: Model):GetPivot().Position else nil
+end
+
+-- Ovo que caiu no chão (o meu é o mais perto).
+local function droppedEgg(routeId: string, from: Vector3): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	local nodes = zone and zone:FindFirstChild("Nos")
+	local best: Vector3? = nil
+	for _, model in (if nodes then nodes:GetChildren() else {}) do
+		if model.Name == "OvoCaido" and model:IsA("Model") then
+			local position = model:GetPivot().Position
+			if not best or (position - from).Magnitude < ((best :: Vector3) - from).Magnitude then
+				best = position
+			end
+		end
+	end
+	return best
+end
+
+-- Faixa vermelha do estouro da boiada: devolve um ponto seguro fora dela.
+local function stampedeEscape(routeId: string, from: Vector3): Vector3?
+	local stripe = zoneChild(routeId, "FaixaEstouro")
+	if not stripe or not stripe:IsA("BasePart") then
+		return nil
+	end
+	local rel = stripe.CFrame:PointToObjectSpace(from)
+	local size = stripe.Size
+	local inside = math.abs(rel.X) <= size.X / 2 + 3 and math.abs(rel.Z) <= size.Z / 2 + 3
+	if not inside then
+		return nil
+	end
+	-- Sai pelo lado mais curto da faixa.
+	local out = if size.X < size.Z
+		then Vector3.new(if rel.X >= 0 then size.X / 2 + 8 else -size.X / 2 - 8, 0, rel.Z)
+		else Vector3.new(rel.X, 0, if rel.Z >= 0 then size.Z / 2 + 8 else -size.Z / 2 - 8)
+	return stripe.CFrame:PointToWorldSpace(out)
+end
+
 local function myIncubator(): Vector3?
 	local world = Workspace:FindFirstChild("Mundo")
 	local lotes = world and world:FindFirstChild("Lotes")
@@ -6391,7 +8868,24 @@ function Guide.update()
 	local basketFull = basket >= (player:GetAttribute("CestaMax") or math.huge)
 	local bossRoute = Workspace:GetAttribute("ChefeRota")
 	local bossName = Workspace:GetAttribute("ChefeNome") or "Chefão"
-	if bossRoute and zone == bossRoute and not chaser then
+	local carrying = player:GetAttribute("OvoNaMao")
+	local raceTarget = player:GetAttribute("CorridaAlvo")
+	local escape = if zone then stampedeEscape(zone, root.Position) else nil
+	local lostEgg = if zone and player:GetAttribute("OvoCaido") then droppedEgg(zone, root.Position) else nil
+	if raceTarget then
+		local left = math.max(0, math.ceil((player:GetAttribute("CorridaFim") or 0) - Workspace:GetServerTimeNow()))
+		text, place = "🏇 Arco " .. raceTarget .. "/8  •  ⏱️ " .. left .. "s", raceArch(raceTarget)
+	elseif escape then
+		text, place = "🐄 ESTOURO! Saia da faixa vermelha!", escape
+	elseif lostEgg then
+		text, place = "🥚 Pegue seu ovo de volta!", lostEgg
+	elseif carrying and chaser then
+		text = "🏃 Fuja! Se te pegar, o ovo cai!"
+		place = if zone then safeZonePosition(zone) else nil
+	elseif carrying then
+		text = "🥚 Leve o " .. carrying .. " para a 🐣 Chocadeira!"
+		place = if zone then returnPortalPosition(zone) else myIncubator()
+	elseif bossRoute and zone == bossRoute and not chaser then
 		text, place = "⚔️ Bata no " .. bossName .. " com 👊 (F)!", bossPosition(bossRoute)
 	elseif bossRoute and not zone and profile.routes[bossRoute] then
 		text, place = "⚔️ Chefão! Entre no portal e ajude!", portalPosition(bossRoute)
@@ -6416,6 +8910,12 @@ function Guide.update()
 		text, place = "🧺 Leve a cesta para casa!", returnPortalPosition(zone)
 	elseif hint == "esteira" and not zone then
 		text, place = "🏃 " .. mission, myTreadmill()
+	elseif hint == "placa" and not zone then
+		text, place = "⚡ Melhore a esteira na placa ao lado dela!", myBoard()
+	elseif hint == "pet" and #(profile.equipped or {}) < math.min(Balance.petSlots(profile), #profile.animals) then
+		text, button = "🐾 Equipe seus bichos como pets!", "Animais"
+	elseif hint == "corrida" and zone == "Pradaria" then
+		text, place = "🏇 Vá até a largada da corrida!", raceStart()
 	elseif hint == "loja" and missionUpgrade and coins >= Upgrades.cost(missionUpgrade, profile.upgrades[missionUpgrade] or 0) then
 		text, button = "🛒 " .. mission, "Loja"
 	elseif hint == "tesouro" and zone then
@@ -6535,7 +9035,92 @@ function Guide.start()
 end
 
 return Guide
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000029"><Properties><string name="Name">Punch</string><ProtectedString name="Source"><![CDATA[-- 👊 Bater: tecla F (ou botão X do controle) e um botão na tela do celular.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000031"><Properties><string name="Name">PetFollow</string><ProtectedString name="Source"><![CDATA[-- Move os pets de todos os jogadores (Workspace.Pets/<nome>) atrás dos donos, em leque,
+-- pulando de leve enquanto andam. Roda no cliente para ficar lisinho.
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local PetFollow = {}
+
+local SPACING = 4.5
+local BEHIND = 5.5
+local FOLLOW_SPEED = 7
+local SNAP_DISTANCE = 70
+local HOP_HEIGHT = 0.7
+
+type State = { position: Vector3, facing: Vector3, ground: number, nextRay: number }
+
+local states: { [Model]: State } = {}
+local params = RaycastParams.new()
+params.FilterType = Enum.RaycastFilterType.Exclude
+
+local function groundAt(position: Vector3, ignore: { Instance }): number?
+	params.FilterDescendantsInstances = ignore
+	local hit = Workspace:Raycast(position + Vector3.new(0, 8, 0), Vector3.new(0, -30, 0), params)
+	return if hit then hit.Position.Y else nil
+end
+
+function PetFollow.start()
+	local folder = Workspace:WaitForChild("Pets")
+	RunService.RenderStepped:Connect(function(dt)
+		local now = os.clock()
+		local ignore: { Instance } = { folder }
+		for _, other in Players:GetPlayers() do
+			if other.Character then
+				table.insert(ignore, other.Character)
+			end
+		end
+		for _, mine in folder:GetChildren() do
+			local owner = Players:GetPlayerByUserId(mine:GetAttribute("Dono") or 0)
+			local character = owner and owner.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			local total = mine:GetAttribute("Total") or 1
+			for _, pet in mine:GetChildren() do
+				local petRoot = pet:IsA("Model") and pet.PrimaryPart
+				if root and petRoot then
+					local slot = pet:GetAttribute("Slot") or 1
+					local side = (slot - (total + 1) / 2) * SPACING
+					local flatLook = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+					flatLook = if flatLook.Magnitude > 0.01 then flatLook.Unit else Vector3.zAxis
+					local right = Vector3.new(-flatLook.Z, 0, flatLook.X)
+					local goal = root.Position - flatLook * (BEHIND + math.abs(side) * 0.35) + right * side
+					local state = states[pet]
+					if not state or (state.position - goal).Magnitude > SNAP_DISTANCE then
+						state = { position = goal, facing = flatLook, ground = root.Position.Y - 3, nextRay = 0 }
+						states[pet] = state
+					end
+					if now >= state.nextRay then
+						state.nextRay = now + 0.12
+						state.ground = groundAt(goal, ignore) or (root.Position.Y - 3)
+					end
+					local target = Vector3.new(goal.X, state.ground, goal.Z)
+					local before = state.position
+					state.position = before:Lerp(target, math.min(1, dt * FOLLOW_SPEED))
+					local step = Vector3.new(state.position.X - before.X, 0, state.position.Z - before.Z)
+					local speed = step.Magnitude / math.max(dt, 1e-3)
+					if speed > 1 then
+						state.facing = state.facing:Lerp(step.Unit, math.min(1, dt * 10))
+					else
+						state.facing = state.facing:Lerp(flatLook, math.min(1, dt * 3))
+					end
+					local hop = if speed > 2 then math.abs(math.sin(now * 11 + slot)) * HOP_HEIGHT else 0
+					local at = state.position + Vector3.new(0, hop, 0)
+					local facing = if state.facing.Magnitude > 0.01 then state.facing.Unit else flatLook
+					petRoot.CFrame = CFrame.lookAt(at, at + facing)
+				end
+			end
+		end
+		for pet in states do
+			if not pet.Parent then
+				states[pet] = nil
+			end
+		end
+	end)
+end
+
+return PetFollow
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000032"><Properties><string name="Name">Punch</string><ProtectedString name="Source"><![CDATA[-- 👊 Bater: tecla F (ou botão X do controle) e um botão na tela do celular.
 -- O cliente só faz o avanço e a animação; quem decide se acertou é o servidor (GuardianService.hit).
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
@@ -6628,7 +9213,7 @@ function Punch.pow(at: Vector3)
 end
 
 return Punch
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002A"><Properties><string name="Name">Rainbow</string><ProtectedString name="Source"><![CDATA[-- Peças marcadas com a tag de arco-íris (animais Míticos) trocam de cor sem parar.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000033"><Properties><string name="Name">Rainbow</string><ProtectedString name="Source"><![CDATA[-- Peças marcadas com a tag de arco-íris (animais Míticos) trocam de cor sem parar.
 -- Roda no cliente para não mandar mudança de cor pela rede a cada quadro.
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -6653,7 +9238,7 @@ function Rainbow.start()
 end
 
 return Rainbow
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002B"><Properties><string name="Name">Sfx</string><ProtectedString name="Source"><![CDATA[-- Toca os efeitos sonoros só para este jogador (SoundService:PlayLocalSound).
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000034"><Properties><string name="Name">Sfx</string><ProtectedString name="Source"><![CDATA[-- Toca os efeitos sonoros só para este jogador (SoundService:PlayLocalSound).
 local ContentProvider = game:GetService("ContentProvider")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
@@ -6691,7 +9276,121 @@ function Sfx.start()
 end
 
 return Sfx
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002C"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000035"><Properties><string name="Name">SpeedMods</string><ProtectedString name="Source"><![CDATA[-- Terreno muda a velocidade do jogador (no cliente, que é quem move o personagem):
+--   🟫 Lama (tag "Lama", Chiqueiro): fica lento
+--   🛝 Lama escorregadia (tag "Escorrega"): fica bem rápido
+--   🌳 Árvore do Tesouro: velocidade limitada, para quem é muito rápido não cair dos galhos
+-- A base vem do servidor no atributo "Velocidade" (FarmService.applySpeed).
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local SpeedMods = {}
+
+local MUD_MULT = 0.55
+local SLIDE_MULT = 1.8
+local TREE_CAP = 20
+local TREE_RADIUS = 22
+local TREE_MIN_HEIGHT = 2.5
+
+-- Terreno atual ("lama", "escorrega", "arvore" ou nil): o HUD mostra ao lado da velocidade.
+SpeedMods.terrain = nil :: string?
+
+local player = Players.LocalPlayer
+local trunks: { BasePart } = {}
+
+local function findTrunks()
+	trunks = {}
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	if not zones then
+		return
+	end
+	for _, zone in zones:GetChildren() do
+		local tree = zone:FindFirstChild("ArvoreDoTesouro")
+		local trunk = tree and tree:FindFirstChild("Tronco")
+		if trunk and trunk:IsA("BasePart") then
+			table.insert(trunks, trunk)
+		end
+	end
+end
+
+local function onMud(position: Vector3): boolean
+	for _, part in CollectionService:GetTagged("Lama") do
+		if part:IsA("BasePart") then
+			-- Cilindro deitado: o raio está em Size.Y.
+			local offset = position - part.Position
+			if Vector3.new(offset.X, 0, offset.Z).Magnitude <= part.Size.Y / 2 and offset.Y < 5 and offset.Y > -1 then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function onSlide(position: Vector3): boolean
+	for _, part in CollectionService:GetTagged("Escorrega") do
+		if part:IsA("BasePart") then
+			local rel = part.CFrame:PointToObjectSpace(position)
+			if math.abs(rel.X) <= part.Size.X / 2 and math.abs(rel.Z) <= part.Size.Z / 2 and rel.Y < 5 and rel.Y > -1 then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function onTree(position: Vector3): boolean
+	for _, trunk in trunks do
+		local bottom = trunk.Position.Y - trunk.Size.Y / 2
+		local offset = position - trunk.Position
+		if Vector3.new(offset.X, 0, offset.Z).Magnitude <= TREE_RADIUS and position.Y > bottom + TREE_MIN_HEIGHT + 3 then
+			return true
+		end
+	end
+	return false
+end
+
+function SpeedMods.start()
+	task.delay(3, findTrunks)
+	local lastScan = os.clock()
+	RunService.Heartbeat:Connect(function()
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local base = player:GetAttribute("Velocidade")
+		if not humanoid or not root or type(base) ~= "number" then
+			return
+		end
+		if #trunks == 0 and os.clock() - lastScan > 5 then
+			lastScan = os.clock()
+			findTrunks()
+		end
+		local speed = base
+		local terrain = nil
+		if not player:GetAttribute("CorridaVelocidade") then
+			local position = root.Position
+			if onTree(position) then
+				terrain = "arvore"
+				speed = math.min(speed, TREE_CAP)
+			elseif onSlide(position) then
+				terrain = "escorrega"
+				speed *= SLIDE_MULT
+			elseif onMud(position) then
+				terrain = "lama"
+				speed *= MUD_MULT
+			end
+		end
+		SpeedMods.terrain = terrain
+		if math.abs(humanoid.WalkSpeed - speed) > 0.01 then
+			humanoid.WalkSpeed = speed
+		end
+	end)
+end
+
+return SpeedMods
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000036"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -6787,7 +9486,7 @@ function State.start()
 end
 
 return State
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002D"><Properties><string name="Name">Treadmill</string><ProtectedString name="Source"><![CDATA[-- Visual da esteira no cliente: setas da lona correndo, boneco correndo sozinho,
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000037"><Properties><string name="Name">Treadmill</string><ProtectedString name="Source"><![CDATA[-- Visual da esteira no cliente: setas da lona correndo, boneco correndo sozinho,
 -- "+10 ⚡" subindo a cada ganho e aura de fogo enquanto treina.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -6972,17 +9671,20 @@ function Treadmill.start()
 end
 
 return Treadmill
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX0000003B"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX0000002E"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000045"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX00000038"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Balance = require(Shared.Balance)
 local Format = require(Shared.Format)
+local Species = require(Shared.Config.Species)
 local Style = require(Shared.Style)
 
 local Kit = require(script.Parent.Kit)
+local SpeedMods = require(script.Parent.Parent.SpeedMods)
 local State = require(script.Parent.Parent.State)
 
 export type MenuEntry = { id: string, emoji: string, label: string, color: Color3, onClick: () -> () }
@@ -7002,6 +9704,14 @@ local basketScale: UIScale
 local boostLabels: { [string]: TextLabel } = {}
 local speedLabel: TextLabel
 local speedScale: UIScale
+local petLabel: TextLabel
+
+-- Texto ao lado da velocidade quando o terreno muda ela.
+local TERRAIN_TEXT = {
+	lama = "  🟫 lama: lento",
+	escorrega = "  🛝 escorregando x1.8",
+	arvore = "  🌳 máx ⚡20",
+}
 
 -- Boosts ativos (mesmos ids do BoostService no servidor).
 local BOOSTS = {
@@ -7200,6 +9910,17 @@ function Hud.mount(gui: ScreenGui, scales: { UIScale }, menu: { MenuEntry })
 	}, 2.5)
 	basketScale = Kit.new("UIScale", { Parent = basketLabel })
 
+	-- Bônus dos pets equipados (e do índice/renascer), acima dos boosts.
+	petLabel = bigText({
+		Text = "",
+		TextSize = 22,
+		TextColor3 = Color3.fromRGB(255, 235, 170),
+		Position = UDim2.fromOffset(8, -80),
+		Size = UDim2.fromOffset(0, 30),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Parent = money,
+	}, 2.5)
+
 	-- Linha dos boosts ativos, logo acima do dinheiro.
 	local boostLayout = Kit.list(14, true)
 	boostLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -7207,7 +9928,7 @@ function Hud.mount(gui: ScreenGui, scales: { UIScale }, menu: { MenuEntry })
 		Name = "Boosts",
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(8, -46),
-		Size = UDim2.fromOffset(420, 42),
+		Size = UDim2.fromOffset(760, 42),
 		Parent = money,
 	}, { boostLayout })
 	-- Velocidade atual sempre à mostra: é onde o treino e as botas aparecem.
@@ -7233,6 +9954,11 @@ function Hud.mount(gui: ScreenGui, scales: { UIScale }, menu: { MenuEntry })
 			Parent = boostRow,
 		}, 3)
 	end
+	-- Bônus dos pets fica na mesma linha, depois da velocidade e dos boosts.
+	petLabel.Parent = boostRow
+	petLabel.Position = UDim2.new()
+	petLabel.Size = UDim2.fromOffset(0, 40)
+	petLabel.LayoutOrder = 10
 	Kit.label({
 		Text = "💰",
 		TextSize = 56,
@@ -7307,7 +10033,10 @@ function Hud.tick()
 	local player = Players.LocalPlayer
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		local text = "⚡ " .. math.floor(humanoid.WalkSpeed + 0.5)
+		local base = player:GetAttribute("Velocidade")
+		local shown = if type(base) == "number" then base else humanoid.WalkSpeed
+		local terrain = SpeedMods.terrain
+		local text = "⚡ " .. math.floor(shown + 0.5) .. (if terrain then TERRAIN_TEXT[terrain] or "" else "")
 		if speedLabel.Text ~= text then
 			speedLabel.Text = text
 			speedScale.Scale = 1.4
@@ -7327,6 +10056,20 @@ function Hud.tick()
 	if State.profile then
 		rateLabel.Text = "+" .. Format.rate(State.production()) .. "/s"
 		luckLabel.Text = string.format("🍀 x%.2f", State.luck())
+		local bonus = Balance.petBonus(State.profile)
+		local parts = {}
+		for _, stat in Species.buffOrder do
+			local value = bonus[stat]
+			if value > 0 then
+				local buff = Species.buffs[stat]
+				local shownValue = if stat == "Velocidade" or stat == "Cesta" then math.floor(value) else value
+				table.insert(parts, buff.emoji .. "+" .. shownValue .. buff.suffix)
+			end
+		end
+		local equipped = #(State.profile.equipped or {})
+		petLabel.Text = if equipped > 0
+			then "🐾 " .. equipped .. "/" .. Balance.petSlots(State.profile) .. "  " .. table.concat(parts, "  ")
+			else ""
 	end
 	local golden = State.isGoldenHour()
 	goldenFrame.Visible = golden
@@ -7336,7 +10079,7 @@ function Hud.tick()
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002F"><Properties><string name="Name">Kit</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000039"><Properties><string name="Name">Kit</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
 
 local Kit = {}
 
@@ -7481,7 +10224,7 @@ function Kit.section(text: string, order: number): TextLabel
 end
 
 return Kit
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000030"><Properties><string name="Name">MissionPanel</string><ProtectedString name="Source"><![CDATA[-- Painel fixo da missão atual (lado direito): número, texto, barra de progresso e prêmio.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000003A"><Properties><string name="Name">MissionPanel</string><ProtectedString name="Source"><![CDATA[-- Painel fixo da missão atual (lado direito): número, texto, barra de progresso e prêmio.
 -- Lê os atributos "Missao*" publicados pelo MissionService.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -7604,7 +10347,7 @@ function MissionPanel.tick()
 end
 
 return MissionPanel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000031"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000003B"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
 
 local Kit = require(script.Parent.Kit)
 
@@ -7829,7 +10572,7 @@ function Notifications.reveal(payload)
 end
 
 return Notifications
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000037"><Properties><string name="Name">Pages</string></Properties><Item class="ModuleScript" referent="RBX00000032"><Properties><string name="Name">Animais</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000041"><Properties><string name="Name">Pages</string></Properties><Item class="ModuleScript" referent="RBX0000003C"><Properties><string name="Name">Animais</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
@@ -7843,9 +10586,13 @@ local State = require(script.Parent.Parent.Parent.State)
 
 local SELL_CONFIRM_SECONDS = 3
 
-local function sorted(animals)
-	local list = table.clone(animals)
+local function sorted(profile)
+	local list = table.clone(profile.animals)
 	table.sort(list, function(a, b)
+		local ea, eb = Balance.isEquipped(profile, a.id), Balance.isEquipped(profile, b.id)
+		if ea ~= eb then
+			return ea
+		end
 		local pa, pb = Balance.animalProduction(a), Balance.animalProduction(b)
 		if pa ~= pb then
 			return pa > pb
@@ -7897,11 +10644,17 @@ local function sellButton(parent: Instance, animal, ctx)
 		end
 		armed = false
 		ctx.act("Sell", animal.id)
-	end, { Size = UDim2.fromOffset(150, 32), TextSize = 15, LayoutOrder = 2, Parent = parent })
+	end, { Size = UDim2.fromOffset(150, 28), TextSize = 14, LayoutOrder = 3, Parent = parent })
+end
+
+local function buffText(animal): string
+	local stat, value = Balance.buffOf(animal)
+	local buff = Species.buffs[stat]
+	return buff.emoji .. " +" .. value .. buff.suffix .. " " .. buff.label
 end
 
 return function(content: Frame, profile, ctx)
-	local header = Kit.card(62, 0)
+	local header = Kit.card(104, 0)
 	header.Parent = content
 	Kit.label({
 		Text = "🏡 Espaços: " .. #profile.animals .. "/" .. State.capacity(),
@@ -7909,6 +10662,25 @@ return function(content: Frame, profile, ctx)
 		TextSize = 21,
 		Position = UDim2.fromOffset(14, 6),
 		Size = UDim2.new(0.5, -14, 0, 26),
+		Parent = header,
+	})
+	local equipped = #(profile.equipped or {})
+	Kit.label({
+		Text = "🐾 Pets: " .. equipped .. "/" .. Balance.petSlots(profile) .. "  •  pets andam com você e dão bônus!",
+		Font = Enum.Font.FredokaOne,
+		TextSize = 17,
+		TextColor3 = Color3.fromRGB(150, 90, 30),
+		Position = UDim2.fromOffset(14, 62),
+		Size = UDim2.new(1, -200, 0, 32),
+		Parent = header,
+	})
+	Kit.button("🐾 Equipar melhores", Kit.colors.blue, function()
+		ctx.act("EquipBest")
+	end, {
+		Size = UDim2.fromOffset(176, 36),
+		TextSize = 16,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -10, 0, 60),
 		Parent = header,
 	})
 	Kit.label({
@@ -7930,10 +10702,11 @@ return function(content: Frame, profile, ctx)
 		Parent = header,
 	})
 
-	for order, animal in sorted(profile.animals) do
+	for order, animal in sorted(profile) do
 		local species = Species.byId[animal.species]
 		local rarity = Rarities.list[animal.rarity]
-		local card = Kit.card(104, order, rarity.color)
+		local isPet = Balance.isEquipped(profile, animal.id)
+		local card = Kit.card(116, order, if isPet then Kit.colors.blue else rarity.color)
 		card.Parent = content
 
 		Kit.label({
@@ -7941,7 +10714,16 @@ return function(content: Frame, profile, ctx)
 			TextSize = 46,
 			TextXAlignment = Enum.TextXAlignment.Center,
 			Position = UDim2.fromOffset(6, 0),
-			Size = UDim2.fromOffset(64, 104),
+			Size = UDim2.fromOffset(64, 116),
+			Parent = card,
+		})
+		Kit.label({
+			Text = (if isPet then "🐾 PET  " else "") .. buffText(animal),
+			Font = Enum.Font.FredokaOne,
+			TextSize = 14,
+			TextColor3 = if isPet then Kit.colors.blue else Kit.colors.muted,
+			Position = UDim2.fromOffset(74, 94),
+			Size = UDim2.new(1, -250, 0, 18),
 			Parent = card,
 		})
 		Kit.label({
@@ -7968,9 +10750,13 @@ return function(content: Frame, profile, ctx)
 			BackgroundTransparency = 1,
 			AnchorPoint = Vector2.new(1, 0.5),
 			Position = UDim2.new(1, -10, 0.5, 0),
-			Size = UDim2.fromOffset(150, 90),
+			Size = UDim2.fromOffset(150, 108),
 			Parent = card,
 		}, { layout })
+		layout.Padding = UDim.new(0, 5)
+		Kit.button(if isPet then "✅ Pet (tirar)" else "🐾 Equipar", if isPet then Kit.colors.blue else Color3.fromRGB(120, 170, 70), function()
+			ctx.act("Equip", animal.id)
+		end, { Size = UDim2.fromOffset(150, 30), TextSize = 15, LayoutOrder = 2, Parent = buttons })
 
 		if animal.rarity >= Rarities.MAX then
 			Kit.label({
@@ -7999,7 +10785,7 @@ return function(content: Frame, profile, ctx)
 				})
 				local evolve = Kit.button("⬆ Evoluir", Kit.colors.green, function()
 					ctx.act("Evolve", animal.id)
-				end, { Size = UDim2.fromOffset(150, 42), LayoutOrder = 1, Parent = buttons })
+				end, { Size = UDim2.fromOffset(150, 38), LayoutOrder = 1, Parent = buttons })
 				ctx.track(evolve, if materialsOk then cost.coins else math.huge, function(affordable)
 					Kit.paint(evolve, if affordable then Kit.colors.green else Kit.colors.gray)
 				end)
@@ -8008,9 +10794,10 @@ return function(content: Frame, profile, ctx)
 		sellButton(buttons, animal, ctx)
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000033"><Properties><string name="Name">Indice</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000003D"><Properties><string name="Name">Indice</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Balance = require(Shared.Balance)
 local Rarities = require(Shared.Config.Rarities)
 local Species = require(Shared.Config.Species)
 
@@ -8023,14 +10810,25 @@ return function(content: Frame, profile, _ctx)
 		found += 1
 	end
 
-	local header = Kit.card(52, 0)
+	local header = Kit.card(78, 0)
 	header.Parent = content
 	Kit.label({
 		Text = string.format("📖 Descobertos: %d/%d (%d%%)", found, total, math.floor(found / total * 100)),
 		Font = Enum.Font.FredokaOne,
 		TextSize = 22,
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.fromScale(1, 1),
+		Size = UDim2.new(1, 0, 0, 44),
+		Parent = header,
+	})
+	local toNext = Balance.INDEX_STEP - found % Balance.INDEX_STEP
+	Kit.label({
+		Text = "💰 Bônus do índice: +" .. Balance.indexBonus(profile) .. "% moedas  •  faltam " .. toNext .. " descobertas para +" .. Balance.INDEX_BONUS .. "%",
+		Font = Enum.Font.FredokaOne,
+		TextSize = 16,
+		TextColor3 = Kit.colors.good,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Position = UDim2.fromOffset(0, 40),
+		Size = UDim2.new(1, 0, 0, 30),
 		Parent = header,
 	})
 
@@ -8072,7 +10870,7 @@ return function(content: Frame, profile, _ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000034"><Properties><string name="Name">Loja</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000003E"><Properties><string name="Name">Loja</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -8212,7 +11010,79 @@ local function upgradeCards(content: Frame, profile, ctx, ids: { string }, first
 	end
 end
 
+local REBIRTH_CONFIRM_SECONDS = 4
+local PURPLE = Color3.fromRGB(165, 95, 225)
+
+-- Cartão do Renascer: o que ganha, o que perde e o botão (clique duas vezes para confirmar).
+local function rebirthCard(content: Frame, profile, ctx)
+	local rebirths = profile.rebirths or 0
+	local card = Kit.card(150, -1, PURPLE)
+	card.Parent = content
+	Kit.label({
+		Text = "♻️ RENASCER" .. (if rebirths > 0 then "  " .. Kit.hex(Kit.colors.muted, "(já renasceu " .. rebirths .. "x)") else ""),
+		RichText = true,
+		Font = Enum.Font.FredokaOne,
+		TextSize = 22,
+		Position = UDim2.fromOffset(14, 8),
+		Size = UDim2.new(1, -200, 0, 28),
+		Parent = card,
+	})
+	local nextCoins = 1 + Balance.REBIRTH_COIN_BONUS * (rebirths + 1)
+	local nextLuck = 1 + Balance.REBIRTH_LUCK_BONUS * (rebirths + 1)
+	local nextSlots = Balance.PET_SLOTS + math.min(rebirths + 1, Balance.REBIRTH_MAX_SLOTS)
+	Kit.label({
+		RichText = true,
+		Text = Kit.hex(Kit.colors.good, string.format("<b>Ganha para sempre:</b> 💰 x%.1f moedas • 🍀 x%.1f sorte • 🐾 %d pets", nextCoins, nextLuck, nextSlots))
+			.. "\n" .. Kit.hex(Kit.colors.bad, "<b>Recomeça:</b> moedas, materiais, melhorias, treino, rotas e bichos que não são pets")
+			.. "\nFica com: 🐾 pets equipados, 🥚 ovos, 📖 índice",
+		Font = Enum.Font.Gotham,
+		TextSize = 14,
+		TextColor3 = Kit.colors.muted,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Position = UDim2.fromOffset(14, 40),
+		Size = UDim2.new(1, -200, 0, 100),
+		Parent = card,
+	})
+	local cost = Balance.rebirthCost(profile)
+	local needsRoute = not profile.routes[Balance.REBIRTH_ROUTE]
+	local label = if needsRoute then "🔒 Libere o Pasto" else "♻️ 💰 " .. Format.number(cost)
+	local armed = false
+	local button: TextButton
+	button = Kit.button(label, Kit.colors.gray, function()
+		if needsRoute then
+			return
+		end
+		if not armed then
+			armed = true
+			button.Text = "Tem certeza? ♻️"
+			Kit.paint(button, Kit.colors.red)
+			task.delay(REBIRTH_CONFIRM_SECONDS, function()
+				if armed and button.Parent then
+					armed = false
+					button.Text = label
+					Kit.paint(button, Kit.colors.gray)
+				end
+			end)
+			return
+		end
+		armed = false
+		ctx.act("Rebirth")
+	end, {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -12, 0.5, 0),
+		Size = UDim2.fromOffset(170, 52),
+		TextSize = 17,
+		Parent = card,
+	})
+	ctx.track(button, if needsRoute then math.huge else cost, function(affordable)
+		if not armed then
+			Kit.paint(button, if affordable then PURPLE else Kit.colors.gray)
+		end
+	end)
+end
+
 return function(content: Frame, profile, ctx)
+	rebirthCard(content, profile, ctx)
 	Kit.section("🎒 Equipamentos", 0).Parent = content
 	upgradeCards(content, profile, ctx, Upgrades.equipment, 0)
 	Kit.section("⚒️ Melhorias da Fazenda", 10).Parent = content
@@ -8261,7 +11131,7 @@ return function(content: Frame, profile, ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000035"><Properties><string name="Name">Mochila</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000003F"><Properties><string name="Name">Mochila</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Format = require(Shared.Format)
@@ -8332,7 +11202,7 @@ return function(content: Frame, profile, _ctx)
 		})
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000036"><Properties><string name="Name">Rotas</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000040"><Properties><string name="Name">Rotas</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
@@ -8429,7 +11299,7 @@ return function(content: Frame, profile, ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000038"><Properties><string name="Name">Panel</string><ProtectedString name="Source"><![CDATA[local Kit = require(script.Parent.Kit)
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000042"><Properties><string name="Name">Panel</string><ProtectedString name="Source"><![CDATA[local Kit = require(script.Parent.Kit)
 
 export type Context = {
 	act: (action: string, arg: string?) -> (boolean, any),
@@ -8551,7 +11421,7 @@ function Panel:refreshCosts(coins: number)
 end
 
 return Panel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000039"><Properties><string name="Name">TrainingPanel</string><ProtectedString name="Source"><![CDATA[-- Painel que aparece embaixo enquanto o jogador está na esteira: quanto ganha por segundo,
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000043"><Properties><string name="Name">TrainingPanel</string><ProtectedString name="Source"><![CDATA[-- Painel que aparece embaixo enquanto o jogador está na esteira: quanto ganha por segundo,
 -- barra até o próximo +1 e "⚡ 18 → 19", com o próximo guardião a ultrapassar.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -8642,7 +11512,7 @@ function TrainingPanel.tick()
 end
 
 return TrainingPanel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000003A"><Properties><string name="Name">Welcome</string><ProtectedString name="Source"><![CDATA[-- Janela "Bem-vindo de volta!" com os ganhos offline (as moedas já entraram no servidor;
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000044"><Properties><string name="Name">Welcome</string><ProtectedString name="Source"><![CDATA[-- Janela "Bem-vindo de volta!" com os ganhos offline (as moedas já entraram no servidor;
 -- o botão só fecha a janela com festa).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -8762,7 +11632,7 @@ function Welcome.show(gui: ScreenGui, scales: { UIScale }, amount: number, secon
 end
 
 return Welcome
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX0000003C"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000046"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -8831,5 +11701,5 @@ end
 
 return World
 ]]></ProtectedString></Properties></Item></Item></Item></Item>
-<Item class="Lighting" referent="RBX00000040"><Properties><string name="Name">Lighting</string><token name="Technology">4</token></Properties></Item>
+<Item class="Lighting" referent="RBX0000004A"><Properties><string name="Name">Lighting</string><token name="Technology">4</token></Properties></Item>
 </roblox>

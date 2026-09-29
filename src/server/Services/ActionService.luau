@@ -3,14 +3,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Remotes)
-local Upgrades = require(Shared.Config.Upgrades)
 
-local Basket = require(script.Parent.Basket)
 local DataService = require(script.Parent.DataService)
-local EquipmentService = require(script.Parent.EquipmentService)
 local FarmService = require(script.Parent.FarmService)
 local PassService = require(script.Parent.PassService)
+local RebirthService = require(script.Parent.RebirthService)
 local RouteService = require(script.Parent.RouteService)
+local UpgradeService = require(script.Parent.UpgradeService)
 
 local ActionService = {}
 
@@ -19,39 +18,16 @@ local RATE_LIMIT = 8
 
 type Handler = (Player, string) -> (boolean, any)
 
-local function buyUpgrade(player: Player, upgradeId: string): (boolean, string?)
-	local def = Upgrades.byId[upgradeId]
-	if not def then
-		return false, "Melhoria inválida"
-	end
-	local profile = DataService.get(player)
-	local level = profile.upgrades[upgradeId] or 0
-	if level >= def.max then
-		return false, "Nível máximo!"
-	end
-	if not DataService.spendCoins(player, Upgrades.cost(upgradeId, level)) then
-		return false, "Moedas insuficientes"
-	end
-	profile.upgrades[upgradeId] = level + 1
-	if upgradeId == "Velocidade" or upgradeId == "Pulo" then
-		FarmService.applySpeed(player)
-	elseif upgradeId == "Cesta" then
-		Basket.refresh(player)
-	elseif upgradeId == "Fazenda" then
-		FarmService.decorate(player)
-	end
-	EquipmentService.refresh(player)
-	DataService.push(player)
-	return true, def.emoji .. " " .. def.name .. " nível " .. (level + 1) .. "!"
-end
-
 local HANDLERS: { [string]: Handler } = {
 	GetProfile = function(player)
 		return true, DataService.get(player)
 	end,
 	Evolve = FarmService.evolve,
 	Sell = FarmService.sell,
-	BuyUpgrade = buyUpgrade,
+	BuyUpgrade = UpgradeService.buy,
+	Equip = FarmService.equip,
+	EquipBest = FarmService.equipBest,
+	Rebirth = RebirthService.rebirth,
 	UnlockRoute = RouteService.unlock,
 	Travel = RouteService.travel,
 	BuyPass = PassService.prompt,

@@ -5,10 +5,13 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Balance = require(Shared.Balance)
 local Format = require(Shared.Format)
+local Species = require(Shared.Config.Species)
 local Style = require(Shared.Style)
 
 local Kit = require(script.Parent.Kit)
+local SpeedMods = require(script.Parent.Parent.SpeedMods)
 local State = require(script.Parent.Parent.State)
 
 export type MenuEntry = { id: string, emoji: string, label: string, color: Color3, onClick: () -> () }
@@ -28,6 +31,14 @@ local basketScale: UIScale
 local boostLabels: { [string]: TextLabel } = {}
 local speedLabel: TextLabel
 local speedScale: UIScale
+local petLabel: TextLabel
+
+-- Texto ao lado da velocidade quando o terreno muda ela.
+local TERRAIN_TEXT = {
+	lama = "  🟫 lama: lento",
+	escorrega = "  🛝 escorregando x1.8",
+	arvore = "  🌳 máx ⚡20",
+}
 
 -- Boosts ativos (mesmos ids do BoostService no servidor).
 local BOOSTS = {
@@ -226,6 +237,17 @@ function Hud.mount(gui: ScreenGui, scales: { UIScale }, menu: { MenuEntry })
 	}, 2.5)
 	basketScale = Kit.new("UIScale", { Parent = basketLabel })
 
+	-- Bônus dos pets equipados (e do índice/renascer), acima dos boosts.
+	petLabel = bigText({
+		Text = "",
+		TextSize = 22,
+		TextColor3 = Color3.fromRGB(255, 235, 170),
+		Position = UDim2.fromOffset(8, -80),
+		Size = UDim2.fromOffset(0, 30),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Parent = money,
+	}, 2.5)
+
 	-- Linha dos boosts ativos, logo acima do dinheiro.
 	local boostLayout = Kit.list(14, true)
 	boostLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -233,7 +255,7 @@ function Hud.mount(gui: ScreenGui, scales: { UIScale }, menu: { MenuEntry })
 		Name = "Boosts",
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(8, -46),
-		Size = UDim2.fromOffset(420, 42),
+		Size = UDim2.fromOffset(760, 42),
 		Parent = money,
 	}, { boostLayout })
 	-- Velocidade atual sempre à mostra: é onde o treino e as botas aparecem.
@@ -259,6 +281,11 @@ function Hud.mount(gui: ScreenGui, scales: { UIScale }, menu: { MenuEntry })
 			Parent = boostRow,
 		}, 3)
 	end
+	-- Bônus dos pets fica na mesma linha, depois da velocidade e dos boosts.
+	petLabel.Parent = boostRow
+	petLabel.Position = UDim2.new()
+	petLabel.Size = UDim2.fromOffset(0, 40)
+	petLabel.LayoutOrder = 10
 	Kit.label({
 		Text = "💰",
 		TextSize = 56,
@@ -333,7 +360,10 @@ function Hud.tick()
 	local player = Players.LocalPlayer
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		local text = "⚡ " .. math.floor(humanoid.WalkSpeed + 0.5)
+		local base = player:GetAttribute("Velocidade")
+		local shown = if type(base) == "number" then base else humanoid.WalkSpeed
+		local terrain = SpeedMods.terrain
+		local text = "⚡ " .. math.floor(shown + 0.5) .. (if terrain then TERRAIN_TEXT[terrain] or "" else "")
 		if speedLabel.Text ~= text then
 			speedLabel.Text = text
 			speedScale.Scale = 1.4
@@ -353,6 +383,20 @@ function Hud.tick()
 	if State.profile then
 		rateLabel.Text = "+" .. Format.rate(State.production()) .. "/s"
 		luckLabel.Text = string.format("🍀 x%.2f", State.luck())
+		local bonus = Balance.petBonus(State.profile)
+		local parts = {}
+		for _, stat in Species.buffOrder do
+			local value = bonus[stat]
+			if value > 0 then
+				local buff = Species.buffs[stat]
+				local shownValue = if stat == "Velocidade" or stat == "Cesta" then math.floor(value) else value
+				table.insert(parts, buff.emoji .. "+" .. shownValue .. buff.suffix)
+			end
+		end
+		local equipped = #(State.profile.equipped or {})
+		petLabel.Text = if equipped > 0
+			then "🐾 " .. equipped .. "/" .. Balance.petSlots(State.profile) .. "  " .. table.concat(parts, "  ")
+			else ""
 	end
 	local golden = State.isGoldenHour()
 	goldenFrame.Visible = golden

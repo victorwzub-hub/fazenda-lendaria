@@ -37,6 +37,9 @@ local function template()
 		materials = {},
 		animals = {},
 		nextAnimalId = 1,
+		equipped = {},
+		rebirths = 0,
+		daily = { day = 0, streak = 0 },
 		upgrades = { Sorte = 0, Fazenda = 0, Velocidade = 0, Pulo = 0, Rede = 0, Cesta = 0, Esteira = 0 },
 		training = 0,
 		eggs = {},
@@ -44,7 +47,7 @@ local function template()
 		mission = { index = 1, base = 0 },
 		routes = { Galinheiro = true },
 		index = {},
-		stats = { legendaries = 0, nests = 0, collected = 0, deposited = 0, evolved = 0, chests = 0, knockouts = 0, bosses = 0, hatched = 0 },
+		stats = { legendaries = 0, nests = 0, collected = 0, deposited = 0, evolved = 0, chests = 0, knockouts = 0, bosses = 0, hatched = 0, races = 0, stampedes = 0 },
 		lastOnline = 0,
 	}
 end

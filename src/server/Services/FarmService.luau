@@ -14,6 +14,7 @@ local Basket = require(script.Parent.Basket)
 local DataService = require(script.Parent.DataService)
 local Notify = require(script.Parent.Notify)
 local PassService = require(script.Parent.PassService)
+local PetService = require(script.Parent.PetService)
 local Teleport = require(script.Parent.Teleport)
 
 local FarmService = {}
@@ -34,12 +35,40 @@ local function randomSpot(plot): CFrame
 	return plot.cframe * CFrame.new(x, 0, z) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
 end
 
+-- Ações paradas que o cliente anima (client/AnimalAnimator): farejar, comer, dormir.
+local IDLE_ACTIONS = {
+	{ name = "farejar", weight = 3, min = 2, max = 4 },
+	{ name = "comer", weight = 3, min = 3, max = 5 },
+	{ name = "dormir", weight = 1, min = 6, max = 10 },
+}
+
+local function idleAction(model: Model)
+	local total = 0
+	for _, action in IDLE_ACTIONS do
+		total += action.weight
+	end
+	local roll = rng:NextNumber(0, total)
+	for _, action in IDLE_ACTIONS do
+		roll -= action.weight
+		if roll <= 0 then
+			model:SetAttribute("Acao", action.name)
+			task.wait(rng:NextNumber(action.min, action.max))
+			model:SetAttribute("Acao", nil)
+			return
+		end
+	end
+end
+
 local function wander(model: Model, plot)
 	local root = model.PrimaryPart :: BasePart
 	while model.Parent do
-		task.wait(rng:NextNumber(2, 6))
+		task.wait(rng:NextNumber(1, 3))
 		if not model.Parent then
 			break
+		end
+		if rng:NextNumber() < 0.45 then
+			idleAction(model)
+			continue
 		end
 		local from = root.Position
 		local target = randomSpot(plot).Position
@@ -58,10 +87,24 @@ local function wander(model: Model, plot)
 	end
 end
 
+local function despawnModel(player: Player, animalId: string)
+	local models = modelsOf[player]
+	if models and models[animalId] then
+		models[animalId]:Destroy()
+		models[animalId] = nil
+	end
+end
+
 local function spawnModel(player: Player, animal)
 	local plot = plotOf[player]
 	local models = modelsOf[player]
-	if not plot or not models then
+	local profile = DataService.get(player)
+	if not plot or not models or not profile then
+		return
+	end
+	-- Pet equipado anda com o dono, não fica na fazenda.
+	if Balance.isEquipped(profile, animal.id) then
+		despawnModel(player, animal.id)
 		return
 	end
 	local previous = models[animal.id]
@@ -76,14 +119,6 @@ local function spawnModel(player: Player, animal)
 	task.spawn(wander, model, plot)
 end
 
-local function despawnModel(player: Player, animalId: string)
-	local models = modelsOf[player]
-	if models and models[animalId] then
-		models[animalId]:Destroy()
-		models[animalId] = nil
-	end
-end
-
 local function findAnimal(profile, animalId: string): (any, number?)
 	for i, animal in profile.animals do
 		if animal.id == animalId then
@@ -94,7 +129,26 @@ local function findAnimal(profile, animalId: string): (any, number?)
 end
 
 local function registerDiscovery(player: Player, profile, animal)
-	profile.index[animal.species .. ":" .. animal.rarity] = true
+	local key = animal.species .. ":" .. animal.rarity
+	if not profile.index[key] then
+		profile.index[key] = true
+		local count = Balance.indexCount(profile)
+		if count % Balance.INDEX_STEP == 0 then
+			Notify.big(
+				player,
+				"📖 ÍNDICE: " .. count .. " DESCOBERTAS!",
+				"Bônus do índice agora: +" .. Balance.indexBonus(profile) .. "% de moedas para sempre",
+				Color3.fromRGB(190, 130, 255),
+				"revelar"
+			)
+		else
+			Notify.toast(
+				player,
+				"📖 Nova descoberta no Índice! (" .. count .. " • faltam " .. (Balance.INDEX_STEP - count % Balance.INDEX_STEP) .. " para +" .. Balance.INDEX_BONUS .. "% moedas)",
+				Color3.fromRGB(190, 130, 255)
+			)
+		end
+	end
 	if animal.rarity >= Rarities.LEGENDARY then
 		profile.stats.legendaries += 1
 		DataService.syncLegendaries(player)
@@ -214,11 +268,112 @@ function FarmService.plotFor(player: Player)
 	return plotOf[player]
 end
 
+-- Chamado quando algo que muda os bônus acontece (pets, renascer). init.server liga no
+-- TrainingService para atualizar a placa da esteira.
+FarmService.onBonusChanged = nil :: ((Player) -> ())?
+FarmService.onPlotReleased = nil :: ((any) -> ())?
+
+local function bonusChanged(player: Player)
+	FarmService.applySpeed(player)
+	Basket.refresh(player)
+	PetService.refresh(player)
+	if FarmService.onBonusChanged then
+		FarmService.onBonusChanged(player)
+	end
+	DataService.push(player)
+end
+
+-- Remonta todos os bichos da fazenda (depois de renascer, por exemplo).
+function FarmService.reloadAnimals(player: Player)
+	local profile = DataService.get(player)
+	local models = modelsOf[player]
+	if not profile or not models then
+		return
+	end
+	for id in models do
+		despawnModel(player, id)
+	end
+	for _, animal in profile.animals do
+		spawnModel(player, animal)
+	end
+	bonusChanged(player)
+end
+
+-- Equipar/desequipar um pet.
+function FarmService.equip(player: Player, animalId: string): (boolean, string?)
+	local profile = DataService.get(player)
+	local animal = findAnimal(profile, animalId)
+	if not animal then
+		return false, "Animal não encontrado"
+	end
+	local index = table.find(profile.equipped, animalId)
+	if index then
+		table.remove(profile.equipped, index)
+		spawnModel(player, animal)
+		bonusChanged(player)
+		return true, "🐾 " .. Balance.animalName(animal) .. " voltou para a fazenda"
+	end
+	if #profile.equipped >= Balance.petSlots(profile) then
+		return false, "Pets cheios! (" .. Balance.petSlots(profile) .. ") Desequipe um ou renasça para ter mais espaço"
+	end
+	table.insert(profile.equipped, animalId)
+	despawnModel(player, animalId)
+	profile.stats.equips = (profile.stats.equips or 0) + 1
+	bonusChanged(player)
+	local stat, value = Balance.buffOf(animal)
+	local buff = Species.buffs[stat]
+	return true, "🐾 " .. Balance.animalName(animal) .. " equipado! " .. buff.emoji .. " +" .. value .. buff.suffix .. " " .. buff.label
+end
+
+-- Nota de "quão bom" é um pet: raridade conta muito, rotas mais difíceis contam mais.
+local ROUTE_WEIGHT = { Galinheiro = 1, Chiqueiro = 1.3, Pasto = 1.6, Pradaria = 2 }
+
+local function petScore(animal): number
+	local species = Species.byId[animal.species]
+	return (Balance.PET_BUFF_MULT[animal.rarity] or 1)
+		* (if animal.shiny then Balance.SHINY_BUFF_MULT else 1)
+		* (ROUTE_WEIGHT[species.route] or 1)
+end
+
+function FarmService.equipBest(player: Player): (boolean, string?)
+	local profile = DataService.get(player)
+	local list = table.clone(profile.animals)
+	table.sort(list, function(a, b)
+		local sa, sb = petScore(a), petScore(b)
+		if sa ~= sb then
+			return sa > sb
+		end
+		return a.id < b.id
+	end)
+	local previous = profile.equipped
+	profile.equipped = {}
+	for i = 1, math.min(Balance.petSlots(profile), #list) do
+		table.insert(profile.equipped, list[i].id)
+	end
+	for _, animal in profile.animals do
+		local was = table.find(previous, animal.id) ~= nil
+		local now = Balance.isEquipped(profile, animal.id)
+		if was ~= now then
+			if now then
+				despawnModel(player, animal.id)
+			else
+				spawnModel(player, animal)
+			end
+		end
+	end
+	profile.stats.equips = (profile.stats.equips or 0) + 1
+	bonusChanged(player)
+	return true, "🐾 Melhores pets equipados!"
+end
+
 function FarmService.releasePlot(player: Player)
 	local plot = plotOf[player]
 	if plot then
 		plot.owner = nil
 		plot.sign.Text = "Fazenda livre"
+		if FarmService.onPlotReleased then
+			FarmService.onPlotReleased(plot)
+		end
 		plot.animals:ClearAllChildren()
 		local decorations = (plot.animals.Parent :: Instance):FindFirstChild("Melhorias")
 		if decorations then
@@ -242,7 +397,15 @@ function FarmService.applySpeed(player: Player)
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	if profile and humanoid then
 		local boosted = (player:GetAttribute("BoostVelocidade") or 0) > Workspace:GetServerTimeNow()
-		humanoid.WalkSpeed = Balance.walkSpeed(profile) + (if boosted then Balance.BOOST_SPEED else 0)
+		local speed = Balance.walkSpeed(profile) + (if boosted then Balance.BOOST_SPEED else 0)
+		-- Corrida a cavalo (Pradaria): velocidade fixa do cavalo.
+		local race = player:GetAttribute("CorridaVelocidade")
+		if race then
+			speed = race
+		end
+		humanoid.WalkSpeed = speed
+		-- O cliente usa este valor como base (lama deixa lento, árvore limita…).
+		player:SetAttribute("Velocidade", speed)
 		humanoid.UseJumpPower = false
 		humanoid.JumpHeight = Balance.jumpHeight(profile)
 	end
@@ -307,6 +470,9 @@ function FarmService.evolve(player: Player, animalId: string): (boolean, string?
 	profile.stats.evolved = (profile.stats.evolved or 0) + 1
 	registerDiscovery(player, profile, animal)
 	spawnModel(player, animal)
+	if Balance.isEquipped(profile, animal.id) then
+		bonusChanged(player)
+	end
 	DataService.push(player)
 
 	Notify.reveal(player, {
@@ -331,6 +497,11 @@ function FarmService.sell(player: Player, animalId: string): (boolean, string?)
 	local value = Balance.sellPrice(animal)
 	DataService.addCoins(player, value)
 	despawnModel(player, animalId)
+	local equippedIndex = table.find(profile.equipped, animalId)
+	if equippedIndex then
+		table.remove(profile.equipped, equippedIndex)
+		bonusChanged(player)
+	end
 	DataService.push(player)
 	return true, "Vendido por 💰 " .. Format.number(value)
 end

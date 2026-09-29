@@ -32,6 +32,10 @@ local function progressOf(profile, mission): (number, number)
 		return if Balance.hasAnimal(profile, mission.id, mission.goal) then 1 else 0, 1
 	elseif mission.kind == "route" then
 		return if profile.routes[mission.id] then 1 else 0, 1
+	elseif mission.kind == "equipped" then
+		return #(profile.equipped or {}), mission.goal
+	elseif mission.kind == "rebirth" then
+		return profile.rebirths or 0, mission.goal
 	end
 	return 0, 1
 end

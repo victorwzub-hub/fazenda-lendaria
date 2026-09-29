@@ -15,6 +15,7 @@ local Style = require(Shared.Style)
 
 local Basket = require(script.Parent.Basket)
 local DataService = require(script.Parent.DataService)
+local EggService = require(script.Parent.EggService)
 local Notify = require(script.Parent.Notify)
 
 local GuardianService = {}
@@ -68,6 +69,8 @@ type Guardian = {
 	lastHitAt: number,
 	stunnedUntil: number,
 	knockedOut: boolean,
+	action: string?,
+	actionEnds: number,
 }
 
 local guardians: { Guardian } = {}
@@ -76,6 +79,7 @@ local rng = Random.new()
 local EffectRemote: RemoteEvent
 local lastHit: { [Player]: number } = {}
 local updateTag: (Guardian) -> ()
+local setAction: (Guardian, string?) -> ()
 
 -- Chamado quando um guardião desmaia (init.server liga no BoostService para soltar a comida).
 GuardianService.beforeHit = nil :: ((Player) -> boolean)?
@@ -177,30 +181,38 @@ local function dropPile(owner: Player, zone, position: Vector3, items: { [string
 	end)
 end
 
-local function catch(guardian: Guardian, player: Player)
+-- Empurrão que derruba parte da cesta e o ovo que o jogador carrega (guardião, estouro da boiada).
+-- Devolve false se o escudo protegeu.
+function GuardianService.knock(player: Player, from: Vector3, zone, who: string, fraction: number?): boolean
 	local root = rootOf(player)
-	stopChase(guardian)
-	guardian.cooldownUntil = os.clock() + COOLDOWN
 	if not root then
-		return
+		return false
 	end
-	-- Boost de escudo: o guardião bate e desiste, sem derrubar nada.
+	-- Boost de escudo: bate e desiste, sem derrubar nada.
 	if (player:GetAttribute("BoostEscudo") or 0) > Workspace:GetServerTimeNow() then
-		Notify.toast(player, "🛡️ O escudo te protegeu do " .. guardian.def.name .. "!", Color3.fromRGB(255, 215, 70))
-		return
+		Notify.toast(player, "🛡️ O escudo te protegeu do " .. who .. "!", Color3.fromRGB(255, 215, 70))
+		return false
 	end
-	EffectRemote:FireClient(player, { kind = "knock", from = guardian.root.Position })
-	local dropped = Basket.take(player, DROP_FRACTION)
+	EffectRemote:FireClient(player, { kind = "knock", from = from })
+	EggService.drop(player, root.Position + Vector3.new(0, 0, 3), zone.nodes)
+	local dropped = Basket.take(player, fraction or DROP_FRACTION)
 	local count = 0
 	for _, amount in dropped do
 		count += amount
 	end
 	if count > 0 then
-		dropPile(player, guardian.zone, root.Position, dropped)
-		Notify.toast(player, "💥 O " .. guardian.def.name .. " te pegou! Caíram " .. count .. " itens", ANGRY)
+		dropPile(player, zone, root.Position, dropped)
+		Notify.toast(player, "💥 O " .. who .. " te pegou! Caíram " .. count .. " itens", ANGRY)
 	else
-		Notify.toast(player, "💥 O " .. guardian.def.name .. " te pegou!", ANGRY)
+		Notify.toast(player, "💥 O " .. who .. " te pegou!", ANGRY)
 	end
+	return true
+end
+
+local function catch(guardian: Guardian, player: Player)
+	stopChase(guardian)
+	guardian.cooldownUntil = os.clock() + COOLDOWN
+	GuardianService.knock(player, guardian.root.Position, guardian.zone, guardian.def.name)
 end
 
 -- Primeiro o guardião "percebe" (para, vira, "!" e pulinho); só depois corre.
@@ -234,7 +246,8 @@ function GuardianService.alert(player: Player, position: Vector3, chance: number
 	local best: Guardian? = nil
 	local bestDistance = ALERT_RADIUS
 	for _, guardian in guardians do
-		if guardian.state ~= "chase" and guardian.state ~= "alert" and now >= guardian.cooldownUntil and now >= guardian.stunnedUntil and inZone(guardian.zone, position) then
+		local asleep = guardian.action == "dormir"
+		if not asleep and guardian.state ~= "chase" and guardian.state ~= "alert" and now >= guardian.cooldownUntil and now >= guardian.stunnedUntil and inZone(guardian.zone, position) then
 			local distance = (flat(guardian.root.Position) - flat(position)).Magnitude
 			if distance < bestDistance then
 				best, bestDistance = guardian, distance
@@ -285,6 +298,7 @@ function GuardianService.hit(player: Player): boolean
 		stopChase(guardian)
 	end
 	guardian.state = "idle"
+	setAction(guardian, nil)
 	guardian.hits += 1
 	guardian.lastHitAt = now
 
@@ -322,6 +336,14 @@ function GuardianService.hit(player: Player): boolean
 	return true
 end
 
+-- Ação atual no modelo (o cliente anima: "farejar", "dormir", "correr", "tonto", "desmaiado").
+function setAction(guardian: Guardian, action: string?)
+	if guardian.action ~= action then
+		guardian.action = action
+		guardian.model:SetAttribute("Acao", action)
+	end
+end
+
 local function step(guardian: Guardian, dt: number, now: number)
 	local position = guardian.root.Position
 	local goal: Vector3? = nil
@@ -329,6 +351,7 @@ local function step(guardian: Guardian, dt: number, now: number)
 
 	if guardian.stunnedUntil > 0 then
 		if now < guardian.stunnedUntil then
+			setAction(guardian, if guardian.knockedOut then "desmaiado" else "tonto")
 			local base = CFrame.new(position.X, 0, position.Z) * guardian.root.CFrame.Rotation
 			if guardian.knockedOut then
 				-- Desmaiado: deitado de lado.
@@ -343,6 +366,7 @@ local function step(guardian: Guardian, dt: number, now: number)
 		end
 		-- Acordou: fica em pé de novo.
 		guardian.stunnedUntil = 0
+		setAction(guardian, nil)
 		guardian.alert.Enabled = false
 		guardian.alertLabel.Text = "!"
 		if guardian.knockedOut then
@@ -357,6 +381,12 @@ local function step(guardian: Guardian, dt: number, now: number)
 	if guardian.hits > 0 and now - guardian.lastHitAt > HEAL_AFTER then
 		guardian.hits = 0
 		updateTag(guardian)
+	end
+
+	if guardian.state == "alert" or guardian.state == "chase" then
+		setAction(guardian, "correr")
+	elseif guardian.action == "correr" then
+		setAction(guardian, nil)
 	end
 
 	if guardian.state == "alert" then
@@ -404,7 +434,26 @@ local function step(guardian: Guardian, dt: number, now: number)
 		end
 	end
 	if guardian.state == "idle" then
+		-- Parado fazendo alguma coisa (farejar, dormir…): o cliente anima.
+		if guardian.action then
+			if now < guardian.actionEnds then
+				return
+			end
+			setAction(guardian, nil)
+			guardian.nextWander = 0
+		end
 		if not guardian.wanderTo or now > guardian.nextWander then
+			local roll = rng:NextNumber()
+			if roll < 0.25 then
+				setAction(guardian, "farejar")
+				guardian.actionEnds = now + rng:NextNumber(2, 4)
+				return
+			elseif roll < 0.33 then
+				-- Dormindo não percebe ninguém: dá para passar de fininho!
+				setAction(guardian, "dormir")
+				guardian.actionEnds = now + rng:NextNumber(5, 9)
+				return
+			end
 			local angle = rng:NextNumber(0, math.pi * 2)
 			local radius = rng:NextNumber(4, WANDER_RADIUS)
 			guardian.wanderTo = guardian.home + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
@@ -491,6 +540,8 @@ function GuardianService.init(zones)
 					lastHitAt = 0,
 					stunnedUntil = 0,
 					knockedOut = false,
+					action = nil,
+					actionEnds = 0,
 					home = home,
 					state = "idle",
 					target = nil,

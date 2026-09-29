@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Balance = require(Shared.Balance)
 local Rarities = require(Shared.Config.Rarities)
 local Species = require(Shared.Config.Species)
 
@@ -13,14 +14,25 @@ return function(content: Frame, profile, _ctx)
 		found += 1
 	end
 
-	local header = Kit.card(52, 0)
+	local header = Kit.card(78, 0)
 	header.Parent = content
 	Kit.label({
 		Text = string.format("📖 Descobertos: %d/%d (%d%%)", found, total, math.floor(found / total * 100)),
 		Font = Enum.Font.FredokaOne,
 		TextSize = 22,
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.fromScale(1, 1),
+		Size = UDim2.new(1, 0, 0, 44),
+		Parent = header,
+	})
+	local toNext = Balance.INDEX_STEP - found % Balance.INDEX_STEP
+	Kit.label({
+		Text = "💰 Bônus do índice: +" .. Balance.indexBonus(profile) .. "% moedas  •  faltam " .. toNext .. " descobertas para +" .. Balance.INDEX_BONUS .. "%",
+		Font = Enum.Font.FredokaOne,
+		TextSize = 16,
+		TextColor3 = Kit.colors.good,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Position = UDim2.fromOffset(0, 40),
+		Size = UDim2.new(1, 0, 0, 30),
 		Parent = header,
 	})
 

@@ -30,6 +30,22 @@ Balance.BOOTS_SPEED = 3
 Balance.BASKET_BASE = 20
 Balance.BASKET_PER_LEVEL = 10
 Balance.NET_CHANCE_PER_LEVEL = 0.5
+-- Pets: até 3 equipados (+1 por renascimento, até +3). O bônus do bicho cresce com a raridade.
+Balance.PET_SLOTS = 3
+Balance.PET_BUFF_MULT = { 1, 1.6, 2.5, 4, 6.5, 10 }
+Balance.SHINY_BUFF_MULT = 1.5
+-- Renascer: zera o progresso da fazenda em troca de bônus permanentes.
+Balance.REBIRTH_BASE = 250000
+Balance.REBIRTH_GROWTH = 3
+Balance.REBIRTH_COIN_BONUS = 0.5
+Balance.REBIRTH_LUCK_BONUS = 0.1
+Balance.REBIRTH_MAX_SLOTS = 3
+Balance.REBIRTH_ROUTE = "Pasto"
+-- Índice: a cada 5 descobertas, +2% de moedas para sempre.
+Balance.INDEX_STEP = 5
+Balance.INDEX_BONUS = 2
+-- Esteira Turbo: cada nível dá +75% do treino base.
+Balance.TREADMILL_PER_LEVEL = 0.75
 
 -- Custo para subir da raridade [i] para i+1: { comum, incomum, raro, cristais, moedas (x base da espécie) }
 local EVOLVE_STEPS = {
@@ -57,12 +73,77 @@ function Balance.animalProduction(animal: Animal): number
 	return species.base * rarity.mult * (if animal.shiny then Balance.SHINY_MULT else 1)
 end
 
+function Balance.petSlots(profile): number
+	return Balance.PET_SLOTS + math.min(profile.rebirths or 0, Balance.REBIRTH_MAX_SLOTS)
+end
+
+-- Bônus de um bicho equipado: (stat, valor). Ex.: ("Velocidade", 2).
+function Balance.buffOf(animal: Animal): (string, number)
+	local species = Species.byId[animal.species]
+	local value = species.buff.amount
+		* (Balance.PET_BUFF_MULT[animal.rarity] or 1)
+		* (if animal.shiny then Balance.SHINY_BUFF_MULT else 1)
+	return species.buff.stat, math.floor(value * 10 + 0.5) / 10
+end
+
+function Balance.isEquipped(profile, animalId: string): boolean
+	return profile.equipped ~= nil and table.find(profile.equipped, animalId) ~= nil
+end
+
+-- Soma dos bônus dos pets equipados: { Velocidade, Sorte, Cesta, Moedas, Treino }.
+function Balance.petBonus(profile): { [string]: number }
+	local bonus = { Velocidade = 0, Sorte = 0, Cesta = 0, Moedas = 0, Treino = 0 }
+	if not profile.equipped or #profile.equipped == 0 then
+		return bonus
+	end
+	for _, animal in profile.animals do
+		if table.find(profile.equipped, animal.id) then
+			local stat, value = Balance.buffOf(animal)
+			bonus[stat] += value
+		end
+	end
+	return bonus
+end
+
+function Balance.indexCount(profile): number
+	local count = 0
+	for _ in profile.index or {} do
+		count += 1
+	end
+	return count
+end
+
+-- % extra de moedas vindo do índice.
+function Balance.indexBonus(profile): number
+	return math.floor(Balance.indexCount(profile) / Balance.INDEX_STEP) * Balance.INDEX_BONUS
+end
+
+-- Multiplicador de moedas: pets (Moedas%), índice e renascimentos.
+function Balance.coinMultiplier(profile): number
+	local percent = Balance.petBonus(profile).Moedas + Balance.indexBonus(profile)
+	return (1 + percent / 100) * (1 + Balance.REBIRTH_COIN_BONUS * (profile.rebirths or 0))
+end
+
 function Balance.totalProduction(profile, hasVip: boolean): number
 	local total = 0
 	for _, animal in profile.animals do
 		total += Balance.animalProduction(animal)
 	end
-	return total * (if hasVip then Balance.VIP_COIN_MULT else 1)
+	return total * Balance.coinMultiplier(profile) * (if hasVip then Balance.VIP_COIN_MULT else 1)
+end
+
+function Balance.rebirthCost(profile): number
+	return math.floor(Balance.REBIRTH_BASE * Balance.REBIRTH_GROWTH ^ (profile.rebirths or 0))
+end
+
+function Balance.canRebirth(profile, coins: number): (boolean, string?)
+	if not profile.routes[Balance.REBIRTH_ROUTE] then
+		return false, "Libere a Rota do Pasto primeiro"
+	end
+	if coins < Balance.rebirthCost(profile) then
+		return false, "Moedas insuficientes"
+	end
+	return true, nil
 end
 
 function Balance.capacity(profile, hasGiantFarm: boolean): number
@@ -72,7 +153,9 @@ function Balance.capacity(profile, hasGiantFarm: boolean): number
 end
 
 function Balance.luck(profile, hasLuckPass: boolean, goldenHour: boolean): number
-	local luck = 1 + Balance.LUCK_PER_LEVEL * (profile.upgrades.Sorte or 0)
+	local luck = (1 + Balance.LUCK_PER_LEVEL * (profile.upgrades.Sorte or 0))
+		* (1 + Balance.petBonus(profile).Sorte / 100)
+		* (1 + Balance.REBIRTH_LUCK_BONUS * (profile.rebirths or 0))
 	if hasLuckPass then
 		luck *= 2
 	end
@@ -82,9 +165,14 @@ function Balance.luck(profile, hasLuckPass: boolean, goldenHour: boolean): numbe
 	return luck
 end
 
--- Pontos de treino por segundo: Esteira Turbo multiplica (nv 1 = x2, nv 2 = x3…).
+-- Pontos de treino por segundo: cada nível da Esteira Turbo soma +75% e os pets de treino somam %.
+function Balance.trainGainAt(profile, level: number): number
+	local pets = 1 + Balance.petBonus(profile).Treino / 100
+	return math.floor(Balance.TRAIN_GAIN * (1 + Balance.TREADMILL_PER_LEVEL * level) * pets)
+end
+
 function Balance.trainGain(profile): number
-	return Balance.TRAIN_GAIN * (1 + (profile.upgrades.Esteira or 0))
+	return Balance.trainGainAt(profile, profile.upgrades.Esteira or 0)
 end
 
 -- Devolve (nível, pontos dentro do nível, custo do próximo nível).
@@ -107,7 +195,10 @@ function Balance.trainedSpeed(profile): number
 end
 
 function Balance.walkSpeed(profile): number
-	return Balance.BASE_SPEED + Balance.BOOTS_SPEED * (profile.upgrades.Velocidade or 0) + Balance.trainedSpeed(profile)
+	return Balance.BASE_SPEED
+		+ Balance.BOOTS_SPEED * (profile.upgrades.Velocidade or 0)
+		+ Balance.trainedSpeed(profile)
+		+ math.floor(Balance.petBonus(profile).Velocidade)
 end
 
 -- Pulos no ar além do normal (nv 1 = duplo, nv 2 = triplo).
@@ -121,7 +212,7 @@ function Balance.jumpHeight(profile): number
 end
 
 function Balance.basketCapacity(profile): number
-	return Balance.BASKET_BASE + Balance.BASKET_PER_LEVEL * (profile.upgrades.Cesta or 0)
+	return Balance.BASKET_BASE + Balance.BASKET_PER_LEVEL * (profile.upgrades.Cesta or 0) + math.floor(Balance.petBonus(profile).Cesta)
 end
 
 -- Itens a mais da Rede: cada 4 níveis garante +1; o resto é chance de +1.

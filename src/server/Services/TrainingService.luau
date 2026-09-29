@@ -5,11 +5,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
+local Format = require(Shared.Format)
 local Guardians = require(Shared.Config.Guardians)
+local Upgrades = require(Shared.Config.Upgrades)
 
 local DataService = require(script.Parent.DataService)
 local FarmService = require(script.Parent.FarmService)
 local Notify = require(script.Parent.Notify)
+local UpgradeService = require(script.Parent.UpgradeService)
 
 local TrainingService = {}
 
@@ -78,15 +81,70 @@ local function tick(player: Player)
 	end
 end
 
+-- Escreve na placa da esteira do jogador: nível, ganho agora ▶ depois e preço.
+function TrainingService.refreshBoard(player: Player)
+	local profile = DataService.get(player)
+	local plot = FarmService.plotFor(player)
+	if not profile or not plot then
+		return
+	end
+	local board = plot.board
+	local def = Upgrades.byId.Esteira
+	local level = profile.upgrades.Esteira or 0
+	board.level.Text = "Nível " .. level .. "/" .. def.max
+	if level >= def.max then
+		board.gain.Text = "+" .. Balance.trainGain(profile) .. "/s"
+		board.price.Text = "⭐ MÁXIMO"
+	else
+		board.gain.Text = "+" .. Balance.trainGain(profile) .. "/s ▶ +" .. Balance.trainGainAt(profile, level + 1) .. "/s"
+		board.price.Text = "💰 " .. Format.number(Upgrades.cost("Esteira", level))
+	end
+end
+
+function TrainingService.clearBoard(plot)
+	plot.board.level.Text = "Nível -"
+	plot.board.gain.Text = "Treine mais rápido"
+	plot.board.price.Text = ""
+end
+
 function TrainingService.setup(player: Player)
 	local profile = DataService.get(player)
 	player:SetAttribute("Treino", if profile then profile.training or 0 else 0)
 	player:SetAttribute("TreinoMax", Balance.TRAIN_MAX)
+	TrainingService.refreshBoard(player)
 end
 
 function TrainingService.init(plots)
 	for _, plot in plots do
 		table.insert(belts, plot.treadmill)
+		TrainingService.clearBoard(plot)
+		-- Comprar a Esteira Turbo direto na placa.
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText = "Melhorar"
+		prompt.ObjectText = "⚡ Esteira Turbo"
+		prompt.HoldDuration = 0.3
+		prompt.MaxActivationDistance = 12
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = plot.board.part
+		prompt.Triggered:Connect(function(player)
+			if plot.owner ~= player then
+				Notify.toast(player, "Essa esteira é de outro jogador", Color3.fromRGB(255, 120, 100))
+				return
+			end
+			local ok, message = UpgradeService.buy(player, "Esteira")
+			if ok then
+				local profile = DataService.get(player)
+				Notify.big(
+					player,
+					"⚡ ESTEIRA TURBO NÍVEL " .. (profile.upgrades.Esteira or 0) .. "!",
+					"Agora treina +" .. Balance.trainGain(profile) .. " por segundo",
+					Color3.fromRGB(120, 230, 255),
+					"comprar"
+				)
+			else
+				Notify.toast(player, message or "Não deu", Color3.fromRGB(255, 120, 100))
+			end
+		end)
 	end
 	task.spawn(function()
 		while true do

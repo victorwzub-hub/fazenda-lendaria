@@ -14,6 +14,10 @@ local Treadmill = require(script.Treadmill)
 local Punch = require(script.Punch)
 local Rainbow = require(script.Rainbow)
 local Biome = require(script.Biome)
+local AnimalAnimator = require(script.AnimalAnimator)
+local PetFollow = require(script.PetFollow)
+local CarryPose = require(script.CarryPose)
+local SpeedMods = require(script.SpeedMods)
 local Welcome = require(script.UI.Welcome)
 local MissionPanel = require(script.UI.MissionPanel)
 local TrainingPanel = require(script.UI.TrainingPanel)
@@ -196,6 +200,32 @@ Treadmill.start()
 Punch.start()
 Rainbow.start()
 Biome.start()
+AnimalAnimator.start()
+PetFollow.start()
+CarryPose.start()
+SpeedMods.start()
+
+-- Corrida a cavalo: o próximo arco brilha forte; os outros ficam apagadinhos.
+local function highlightArches()
+	local target = player:GetAttribute("CorridaAlvo")
+	local world = Workspace:FindFirstChild("Mundo")
+	local course = world and world:FindFirstChild("Corrida", true)
+	if not course then
+		return
+	end
+	for _, arch in course:GetChildren() do
+		local glow = arch:FindFirstChild("Brilho")
+		if glow and glow:IsA("BasePart") then
+			glow.Transparency = if target and arch.Name == "Arco" .. target then 0.25 else 0.85
+		end
+	end
+end
+player:GetAttributeChangedSignal("CorridaAlvo"):Connect(function()
+	highlightArches()
+	if player:GetAttribute("CorridaAlvo") then
+		Sfx.play("coleta")
+	end
+end)
 
 -- Galo cantando quando o Galo Bravo começa a correr atrás de você.
 player:GetAttributeChangedSignal("Perseguido"):Connect(function()

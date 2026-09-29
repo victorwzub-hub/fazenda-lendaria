@@ -138,7 +138,79 @@ local function upgradeCards(content: Frame, profile, ctx, ids: { string }, first
 	end
 end
 
+local REBIRTH_CONFIRM_SECONDS = 4
+local PURPLE = Color3.fromRGB(165, 95, 225)
+
+-- Cartão do Renascer: o que ganha, o que perde e o botão (clique duas vezes para confirmar).
+local function rebirthCard(content: Frame, profile, ctx)
+	local rebirths = profile.rebirths or 0
+	local card = Kit.card(150, -1, PURPLE)
+	card.Parent = content
+	Kit.label({
+		Text = "♻️ RENASCER" .. (if rebirths > 0 then "  " .. Kit.hex(Kit.colors.muted, "(já renasceu " .. rebirths .. "x)") else ""),
+		RichText = true,
+		Font = Enum.Font.FredokaOne,
+		TextSize = 22,
+		Position = UDim2.fromOffset(14, 8),
+		Size = UDim2.new(1, -200, 0, 28),
+		Parent = card,
+	})
+	local nextCoins = 1 + Balance.REBIRTH_COIN_BONUS * (rebirths + 1)
+	local nextLuck = 1 + Balance.REBIRTH_LUCK_BONUS * (rebirths + 1)
+	local nextSlots = Balance.PET_SLOTS + math.min(rebirths + 1, Balance.REBIRTH_MAX_SLOTS)
+	Kit.label({
+		RichText = true,
+		Text = Kit.hex(Kit.colors.good, string.format("<b>Ganha para sempre:</b> 💰 x%.1f moedas • 🍀 x%.1f sorte • 🐾 %d pets", nextCoins, nextLuck, nextSlots))
+			.. "\n" .. Kit.hex(Kit.colors.bad, "<b>Recomeça:</b> moedas, materiais, melhorias, treino, rotas e bichos que não são pets")
+			.. "\nFica com: 🐾 pets equipados, 🥚 ovos, 📖 índice",
+		Font = Enum.Font.Gotham,
+		TextSize = 14,
+		TextColor3 = Kit.colors.muted,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Position = UDim2.fromOffset(14, 40),
+		Size = UDim2.new(1, -200, 0, 100),
+		Parent = card,
+	})
+	local cost = Balance.rebirthCost(profile)
+	local needsRoute = not profile.routes[Balance.REBIRTH_ROUTE]
+	local label = if needsRoute then "🔒 Libere o Pasto" else "♻️ 💰 " .. Format.number(cost)
+	local armed = false
+	local button: TextButton
+	button = Kit.button(label, Kit.colors.gray, function()
+		if needsRoute then
+			return
+		end
+		if not armed then
+			armed = true
+			button.Text = "Tem certeza? ♻️"
+			Kit.paint(button, Kit.colors.red)
+			task.delay(REBIRTH_CONFIRM_SECONDS, function()
+				if armed and button.Parent then
+					armed = false
+					button.Text = label
+					Kit.paint(button, Kit.colors.gray)
+				end
+			end)
+			return
+		end
+		armed = false
+		ctx.act("Rebirth")
+	end, {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -12, 0.5, 0),
+		Size = UDim2.fromOffset(170, 52),
+		TextSize = 17,
+		Parent = card,
+	})
+	ctx.track(button, if needsRoute then math.huge else cost, function(affordable)
+		if not armed then
+			Kit.paint(button, if affordable then PURPLE else Kit.colors.gray)
+		end
+	end)
+end
+
 return function(content: Frame, profile, ctx)
+	rebirthCard(content, profile, ctx)
 	Kit.section("🎒 Equipamentos", 0).Parent = content
 	upgradeCards(content, profile, ctx, Upgrades.equipment, 0)
 	Kit.section("⚒️ Melhorias da Fazenda", 10).Parent = content

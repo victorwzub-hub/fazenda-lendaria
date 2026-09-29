@@ -1,3 +1,4 @@
+local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
@@ -22,6 +23,14 @@ local WOOD = Color3.fromRGB(150, 105, 65)
 local FENCE = Color3.fromRGB(238, 228, 208)
 local STONE = Color3.fromRGB(125, 125, 135)
 
+-- Placa de melhoria ao lado da esteira (TrainingService escreve os textos).
+export type TreadmillBoard = {
+	part: BasePart,
+	level: TextLabel,
+	gain: TextLabel,
+	price: TextLabel,
+}
+
 export type Plot = {
 	index: number,
 	cframe: CFrame,
@@ -29,6 +38,7 @@ export type Plot = {
 	sign: TextLabel,
 	animals: Folder,
 	treadmill: BasePart,
+	board: TreadmillBoard,
 	incubator: { anchor: BasePart, slots: { CFrame } },
 	owner: Player?,
 }
@@ -473,7 +483,51 @@ end
 local TREADMILL_BELT = Vector3.new(7, 0.3, 10)
 local CHEVRON_COUNT = 5
 
-local function buildTreadmill(parent: Instance, at: CFrame): BasePart
+-- Placa "⚡ ESTEIRA TURBO" ao lado da esteira: mostra o nível, o ganho agora → depois e o preço.
+local function buildBoard(parent: Instance, at: CFrame): TreadmillBoard
+	local frameColor = Color3.fromRGB(255, 150, 40)
+	for _, z in { -3, 3 } do
+		block(parent, Vector3.new(0.8, 7.4, 0.8), at * CFrame.new(0, 3.7, z), frameColor, Enum.Material.Plastic)
+	end
+	local board = block(parent, Vector3.new(0.6, 5, 7), at * CFrame.new(0, 5.2, 0), Color3.fromRGB(28, 32, 58))
+	board.Name = "PlacaEsteira"
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Tela"
+	gui.Face = Enum.NormalId.Left
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 60
+	gui.LightInfluence = 0
+	gui.Parent = board
+	local stroke = Instance.new("Frame")
+	stroke.BackgroundTransparency = 1
+	stroke.Size = UDim2.fromScale(1, 1)
+	stroke.Parent = gui
+	local border = Instance.new("UIStroke")
+	border.Color = frameColor
+	border.Thickness = 10
+	border.Parent = stroke
+	local function line(name: string, text: string, y: number, h: number, color: Color3): TextLabel
+		local label = Instance.new("TextLabel")
+		label.Name = name
+		label.BackgroundTransparency = 1
+		label.Position = UDim2.fromScale(0.05, y)
+		label.Size = UDim2.fromScale(0.9, h)
+		label.Font = Enum.Font.FredokaOne
+		label.TextScaled = true
+		label.Text = text
+		label.TextColor3 = color
+		Style.outline(label, 4)
+		label.Parent = gui
+		return label
+	end
+	line("Titulo", "⚡ ESTEIRA TURBO", 0.05, 0.22, Color3.fromRGB(255, 200, 70))
+	local level = line("Nivel", "Nível 0/10", 0.29, 0.15, Color3.new(1, 1, 1))
+	local gain = line("Ganho", "+10/s ▶ +17/s", 0.46, 0.22, Color3.fromRGB(120, 230, 255))
+	local price = line("Preco", "💰 150", 0.72, 0.2, Color3.fromRGB(95, 235, 70))
+	return { part = board, level = level, gain = gain, price = price }
+end
+
+local function buildTreadmill(parent: Instance, at: CFrame): (BasePart, TreadmillBoard)
 	local model = Instance.new("Model")
 	model.Name = "Esteira"
 	model.Parent = parent
@@ -521,7 +575,8 @@ local function buildTreadmill(parent: Instance, at: CFrame): BasePart
 		UDim2.fromScale(0, 0),
 		Color3.fromRGB(120, 230, 255)
 	)
-	return belt
+	local board = buildBoard(model, at * CFrame.new(TREADMILL_BELT.X / 2 + 4, 0, 0))
+	return belt, board
 end
 
 -- Chocadeira: mesa com 3 ninhos e lâmpada quente. Os ovos (EggService) ficam nos "slots".
@@ -610,7 +665,7 @@ local function buildPlot(parent: Instance, index: number): Plot
 		)
 	)
 
-	local treadmill = buildTreadmill(model, cframe * CFrame.new(21, 0, -16))
+	local treadmill, board = buildTreadmill(model, cframe * CFrame.new(21, 0, -16))
 	local incubator = buildIncubator(model, cframe * CFrame.new(-22, 0, -3))
 
 	local gui = billboard(beam, UDim2.fromScale(18, 3), Vector3.new(0, 2.4, 0), 250)
@@ -628,6 +683,7 @@ local function buildPlot(parent: Instance, index: number): Plot
 		sign = sign,
 		animals = animals,
 		treadmill = treadmill,
+		board = board,
 		incubator = incubator,
 		owner = nil,
 	}
@@ -646,10 +702,11 @@ local ROUTE_DECOR: { [string]: (Instance, any, Random, (number) -> Vector3) -> (
 			)
 		end
 	end,
-	Chiqueiro = function(parent, _route, rng, randomPoint)
-		for _ = 1, 12 do
-			local diameter = rng:NextNumber(10, 20)
-			decor(
+	Chiqueiro = function(parent, route, rng, randomPoint)
+		-- Poças de lama: deixam o jogador LENTO (client/SpeedMods lê a tag).
+		for _ = 1, 16 do
+			local diameter = rng:NextNumber(12, 22)
+			local puddle = decor(
 				block(
 					parent,
 					Vector3.new(0.3, diameter, diameter),
@@ -659,6 +716,27 @@ local ROUTE_DECOR: { [string]: (Instance, any, Random, (number) -> Vector3) -> (
 					Enum.PartType.Cylinder
 				)
 			)
+			puddle.Name = "Lama"
+			CollectionService:AddTag(puddle, "Lama")
+		end
+		-- Pistas de lama escorregadia: deixam RÁPIDO (atalhos para fugir do Porco Bravo).
+		local origin = route.origin
+		for _, angle in { 180, 250, 300 } do
+			local direction = CFrame.Angles(0, rad(angle), 0)
+			local center = CFrame.new(origin) * direction * CFrame.new(0, 0.2, -80)
+			local lane = decor(block(parent, Vector3.new(8, 0.3, 90), center, Color3.fromRGB(150, 95, 55), Enum.Material.SmoothPlastic))
+			lane.Name = "Escorrega"
+			lane.Reflectance = 0.25
+			CollectionService:AddTag(lane, "Escorrega")
+			for i = -4, 4 do
+				for _, side in { -1, 1 } do
+					local arm = decor(block(parent, Vector3.new(0.6, 0.08, 2.6), center * CFrame.new(side * 1.1, 0.2, i * 10) * CFrame.Angles(0, side * rad(-38), 0), Color3.fromRGB(255, 225, 150), Enum.Material.SmoothPlastic))
+					arm.CastShadow = false
+				end
+			end
+			local sign = decor(block(parent, Vector3.one, center * CFrame.new(0, 6, 0), route.theme))
+			sign.Transparency = 1
+			textLabel(billboard(sign, UDim2.fromScale(22, 3.2), Vector3.zero, 160), "Titulo", "🛝 LAMA ESCORREGADIA ⚡", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), Color3.fromRGB(255, 225, 150))
 		end
 	end,
 	Pasto = function(parent, _route, rng, randomPoint)
@@ -720,7 +798,8 @@ local function treasureTree(parent: Instance, center: Vector3, route): BasePart
 	model.Name = "ArvoreDoTesouro"
 	model.Parent = parent
 	local bark = Color3.fromRGB(135, 80, 40)
-	block(model, Vector3.new(5, CANOPY_TOP - 3, 5), CFrame.new(center + Vector3.new(0, (CANOPY_TOP - 3) / 2, 0)), bark, Enum.Material.Wood)
+	local trunk = block(model, Vector3.new(5, CANOPY_TOP - 3, 5), CFrame.new(center + Vector3.new(0, (CANOPY_TOP - 3) / 2, 0)), bark, Enum.Material.Wood)
+	trunk.Name = "Tronco"
 	for i = 0, 3 do
 		local side = CFrame.Angles(0, i * math.pi / 2, 0)
 		block(model, Vector3.new(3, 3, 5), CFrame.new(center) * side * CFrame.new(0, 1.5, 4.5), Style.shade(bark, -0.1), Enum.Material.Wood)
@@ -736,7 +815,7 @@ local function treasureTree(parent: Instance, center: Vector3, route): BasePart
 		local angle = rad(i * 52)
 		local at = center + Vector3.new(math.cos(angle) * 12, height - 0.5, math.sin(angle) * 12)
 		local color = if i > 6 then route.theme else Style.shade(route.theme, 0.35)
-		block(model, Vector3.new(6, 1, 6), CFrame.new(at) * CFrame.Angles(0, -angle, 0), color, Enum.Material.WoodPlanks)
+		block(model, Vector3.new(8, 1, 8), CFrame.new(at) * CFrame.Angles(0, -angle, 0), color, Enum.Material.WoodPlanks)
 	end
 
 	-- Baú dourado na copa.

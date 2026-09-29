@@ -140,6 +140,79 @@ local function myTreadmill(): Vector3?
 	return nil
 end
 
+-- Placa de melhoria ao lado da minha esteira.
+local function myBoard(): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local lotes = world and world:FindFirstChild("Lotes")
+	if not lotes then
+		return nil
+	end
+	for _, lote in lotes:GetChildren() do
+		for _, label in lote:GetDescendants() do
+			if label:IsA("TextLabel") and label.Name == "Dono" and string.find(label.Text, player.DisplayName, 1, true) then
+				local board = lote:FindFirstChild("Esteira") and lote.Esteira:FindFirstChild("PlacaEsteira")
+				return if board then (board :: BasePart).Position else nil
+			end
+		end
+	end
+	return nil
+end
+
+local function zoneChild(routeId: string, name: string): Instance?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	return zone and zone:FindFirstChild(name, true)
+end
+
+-- Arco N da corrida da Pradaria.
+local function raceArch(index: number): Vector3?
+	local arch = zoneChild("Pradaria", "Arco" .. index)
+	return if arch then (arch :: Model):GetPivot().Position else nil
+end
+
+local function raceStart(): Vector3?
+	local post = zoneChild("Pradaria", "Largada")
+	return if post then (post :: Model):GetPivot().Position else nil
+end
+
+-- Ovo que caiu no chão (o meu é o mais perto).
+local function droppedEgg(routeId: string, from: Vector3): Vector3?
+	local world = Workspace:FindFirstChild("Mundo")
+	local zones = world and world:FindFirstChild("Rotas")
+	local zone = zones and zones:FindFirstChild(routeId)
+	local nodes = zone and zone:FindFirstChild("Nos")
+	local best: Vector3? = nil
+	for _, model in (if nodes then nodes:GetChildren() else {}) do
+		if model.Name == "OvoCaido" and model:IsA("Model") then
+			local position = model:GetPivot().Position
+			if not best or (position - from).Magnitude < ((best :: Vector3) - from).Magnitude then
+				best = position
+			end
+		end
+	end
+	return best
+end
+
+-- Faixa vermelha do estouro da boiada: devolve um ponto seguro fora dela.
+local function stampedeEscape(routeId: string, from: Vector3): Vector3?
+	local stripe = zoneChild(routeId, "FaixaEstouro")
+	if not stripe or not stripe:IsA("BasePart") then
+		return nil
+	end
+	local rel = stripe.CFrame:PointToObjectSpace(from)
+	local size = stripe.Size
+	local inside = math.abs(rel.X) <= size.X / 2 + 3 and math.abs(rel.Z) <= size.Z / 2 + 3
+	if not inside then
+		return nil
+	end
+	-- Sai pelo lado mais curto da faixa.
+	local out = if size.X < size.Z
+		then Vector3.new(if rel.X >= 0 then size.X / 2 + 8 else -size.X / 2 - 8, 0, rel.Z)
+		else Vector3.new(rel.X, 0, if rel.Z >= 0 then size.Z / 2 + 8 else -size.Z / 2 - 8)
+	return stripe.CFrame:PointToWorldSpace(out)
+end
+
 local function myIncubator(): Vector3?
 	local world = Workspace:FindFirstChild("Mundo")
 	local lotes = world and world:FindFirstChild("Lotes")
@@ -231,7 +304,24 @@ function Guide.update()
 	local basketFull = basket >= (player:GetAttribute("CestaMax") or math.huge)
 	local bossRoute = Workspace:GetAttribute("ChefeRota")
 	local bossName = Workspace:GetAttribute("ChefeNome") or "Chefão"
-	if bossRoute and zone == bossRoute and not chaser then
+	local carrying = player:GetAttribute("OvoNaMao")
+	local raceTarget = player:GetAttribute("CorridaAlvo")
+	local escape = if zone then stampedeEscape(zone, root.Position) else nil
+	local lostEgg = if zone and player:GetAttribute("OvoCaido") then droppedEgg(zone, root.Position) else nil
+	if raceTarget then
+		local left = math.max(0, math.ceil((player:GetAttribute("CorridaFim") or 0) - Workspace:GetServerTimeNow()))
+		text, place = "🏇 Arco " .. raceTarget .. "/8  •  ⏱️ " .. left .. "s", raceArch(raceTarget)
+	elseif escape then
+		text, place = "🐄 ESTOURO! Saia da faixa vermelha!", escape
+	elseif lostEgg then
+		text, place = "🥚 Pegue seu ovo de volta!", lostEgg
+	elseif carrying and chaser then
+		text = "🏃 Fuja! Se te pegar, o ovo cai!"
+		place = if zone then safeZonePosition(zone) else nil
+	elseif carrying then
+		text = "🥚 Leve o " .. carrying .. " para a 🐣 Chocadeira!"
+		place = if zone then returnPortalPosition(zone) else myIncubator()
+	elseif bossRoute and zone == bossRoute and not chaser then
 		text, place = "⚔️ Bata no " .. bossName .. " com 👊 (F)!", bossPosition(bossRoute)
 	elseif bossRoute and not zone and profile.routes[bossRoute] then
 		text, place = "⚔️ Chefão! Entre no portal e ajude!", portalPosition(bossRoute)
@@ -256,6 +346,12 @@ function Guide.update()
 		text, place = "🧺 Leve a cesta para casa!", returnPortalPosition(zone)
 	elseif hint == "esteira" and not zone then
 		text, place = "🏃 " .. mission, myTreadmill()
+	elseif hint == "placa" and not zone then
+		text, place = "⚡ Melhore a esteira na placa ao lado dela!", myBoard()
+	elseif hint == "pet" and #(profile.equipped or {}) < math.min(Balance.petSlots(profile), #profile.animals) then
+		text, button = "🐾 Equipe seus bichos como pets!", "Animais"
+	elseif hint == "corrida" and zone == "Pradaria" then
+		text, place = "🏇 Vá até a largada da corrida!", raceStart()
 	elseif hint == "loja" and missionUpgrade and coins >= Upgrades.cost(missionUpgrade, profile.upgrades[missionUpgrade] or 0) then
 		text, button = "🛒 " .. mission, "Loja"
 	elseif hint == "tesouro" and zone then

@@ -118,6 +118,12 @@ end
 -- Recalcula a capacidade (depois de comprar Cesta Maior).
 Basket.refresh = sync
 
+-- Esvazia sem guardar (renascer).
+function Basket.clear(player: Player)
+	baskets[player] = nil
+	sync(player)
+end
+
 function Basket.release(player: Player)
 	Basket.deposit(player, true)
 	baskets[player] = nil

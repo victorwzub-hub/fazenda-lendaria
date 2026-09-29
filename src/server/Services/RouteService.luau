@@ -253,8 +253,9 @@ local function collect(player: Player, route, def, luckMult: number?): boolean
 		local rarity = Balance.rollRarity(luck, rng)
 		local shiny = Balance.rollShiny(luck, rng)
 		profile.stats.nests += 1
-		-- O ninho dá um ovo; ele choca na Chocadeira da fazenda (EggService).
-		EggService.give(player, route.species, rarity, shiny, "🥚 NINHO ABERTO!")
+		-- O ninho dá um ovo que o jogador leva nos braços até a Chocadeira (EggService).
+		local species = Species.roll(route.id, rng:NextNumber())
+		EggService.give(player, species, rarity, shiny, "🥚 NINHO ABERTO!", true)
 		return true
 	end
 
@@ -417,7 +418,7 @@ local function spawnFixedNest(routeId: string, tierIndex: number)
 		return profile ~= nil and (requirement == nil or Balance.walkSpeed(profile) >= requirement)
 	end
 	prompt.PromptButtonHoldBegan:Connect(function(player)
-		if fastEnough(player) then
+		if fastEnough(player) and not EggService.isCarrying(player) then
 			GuardianService.alert(player, root.Position, 1)
 		end
 	end)
@@ -429,6 +430,10 @@ local function spawnFixedNest(routeId: string, tierIndex: number)
 		end
 		if not fastEnough(player) then
 			Notify.toast(player, "🔒 Precisa de ⚡" .. requirement .. " para o " .. tier.name .. ". Treine na esteira!", Color3.fromRGB(255, 120, 100))
+			return
+		end
+		if EggService.isCarrying(player) or player:GetAttribute("OvoCaido") then
+			Notify.toast(player, "🥚 Você já tem um ovo! Leve para a 🐣 Chocadeira antes de abrir outro", Color3.fromRGB(255, 200, 120))
 			return
 		end
 		taken = true
