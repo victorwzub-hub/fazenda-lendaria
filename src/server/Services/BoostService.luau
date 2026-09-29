@@ -85,10 +85,8 @@ local function apply(player: Player, def: BoostDef)
 	end)
 end
 
-local function spawnPickup(zone, randomPoint: () -> Vector3)
-	local def = pick()
-	local position = randomPoint()
-
+-- Ícone flutuante que dá o boost `def` para quem encostar. onTaken roda depois de pegar.
+local function buildPickup(parent: Instance, position: Vector3, def: BoostDef, iconText: string, onTaken: () -> ())
 	local model = Instance.new("Model")
 	model.Name = "Boost" .. def.id
 	local core = Instance.new("Part")
@@ -136,7 +134,7 @@ local function spawnPickup(zone, randomPoint: () -> Vector3)
 	local icon = Instance.new("TextLabel")
 	icon.BackgroundTransparency = 1
 	icon.Size = UDim2.fromScale(1, 1)
-	icon.Text = def.emoji
+	icon.Text = iconText
 	icon.TextScaled = true
 	icon.Parent = gui
 	gui.Parent = core
@@ -153,9 +151,39 @@ local function spawnPickup(zone, randomPoint: () -> Vector3)
 		used = true
 		model:Destroy()
 		apply(player, def)
+		onTaken()
+	end)
+	model.Parent = parent
+	return model
+end
+
+local function spawnPickup(zone, randomPoint: () -> Vector3)
+	local def = pick()
+	buildPickup(zone.nodes.Parent, randomPoint(), def, def.emoji, function()
 		task.delay(rng:NextNumber(RESPAWN_MIN, RESPAWN_MAX), spawnPickup, zone, randomPoint)
 	end)
-	model.Parent = zone.nodes.Parent
+end
+
+local FOOD_LIFETIME = 30
+
+-- Comida que o guardião derrubado solta: dá o boost da comida (ex.: 🥓 Bacon = Escudo).
+function BoostService.dropFood(zone, position: Vector3, food)
+	local def: BoostDef? = nil
+	for _, candidate in BoostService.DEFS do
+		if candidate.id == food.boost then
+			def = candidate
+		end
+	end
+	if not def then
+		return
+	end
+	local model = buildPickup(zone.nodes.Parent, position, def, food.emoji, function() end)
+	model.Name = "Comida"
+	task.delay(FOOD_LIFETIME, function()
+		if model.Parent then
+			model:Destroy()
+		end
+	end)
 end
 
 function BoostService.init(zones)

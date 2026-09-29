@@ -7,6 +7,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Remotes)
 local Style = require(Shared.Style)
 
+local Punch = require(script.Parent.Punch)
 local Sfx = require(script.Parent.Sfx)
 
 local Effects = {}
@@ -78,6 +79,8 @@ function Effects.start()
 	Remotes.event("Effect").OnClientEvent:Connect(function(payload)
 		if payload.kind == "knock" then
 			knock(payload.from)
+		elseif payload.kind == "pow" then
+			Punch.pow(payload.at)
 		end
 	end)
 end

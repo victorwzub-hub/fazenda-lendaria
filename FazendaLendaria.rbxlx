@@ -573,10 +573,11 @@ return GamePasses
 local Guardians = {}
 
 Guardians.byRoute = {
-	Galinheiro = { species = "Galinha", name = "Galo Bravo", emoji = "🐔", speed = 17, rarity = 3 },
-	Chiqueiro = { species = "Porco", name = "Porco Bravo", emoji = "🐷", speed = 21, rarity = 3 },
-	Pasto = { species = "Vaca", name = "Touro Bravo", emoji = "🐮", speed = 25, rarity = 4 },
-	Pradaria = { species = "Cavalo", name = "Cavalo Selvagem", emoji = "🐴", speed = 30, rarity = 4 },
+	-- food: o que ele solta ao ser derrubado (3 golpes) e o boost que a comida dá.
+	Galinheiro = { species = "Galinha", name = "Galo Bravo", emoji = "🐔", speed = 17, rarity = 3, food = { emoji = "🍗", name = "Coxinha", boost = "Velocidade" } },
+	Chiqueiro = { species = "Porco", name = "Porco Bravo", emoji = "🐷", speed = 21, rarity = 3, food = { emoji = "🥓", name = "Bacon", boost = "Escudo" } },
+	Pasto = { species = "Vaca", name = "Touro Bravo", emoji = "🐮", speed = 25, rarity = 4, food = { emoji = "🥩", name = "Bife", boost = "Ima" } },
+	Pradaria = { species = "Cavalo", name = "Cavalo Selvagem", emoji = "🐴", speed = 30, rarity = 4, food = { emoji = "🥕", name = "Cenoura", boost = "Velocidade" } },
 }
 
 Guardians.order = { "Galinheiro", "Chiqueiro", "Pasto", "Pradaria" }
@@ -651,10 +652,12 @@ Missions.list = {
 	{ text = "Evolua um animal", kind = "stat", stat = "evolved", goal = 1, reward = 80, hint = "animais" },
 	{ text = "Treine na esteira até ⚡20", kind = "speed", goal = 20, reward = 100, hint = "esteira" },
 	{ text = "Compre as 👢 Botas Rápidas", kind = "upgrade", id = "Velocidade", goal = 1, reward = 120, hint = "loja" },
+	{ text = "👊 Derrube o Galo Bravo (3 golpes)", kind = "stat", stat = "ko_Galinheiro", goal = 1, reward = 150, hint = "rota" },
 	{ text = "Colete 40 itens", kind = "stat", stat = "collected", goal = 40, reward = 150, hint = "rota" },
 	{ text = "Tenha uma 🐔 Galinha Rara", kind = "animal", id = "Galinha", goal = 3, reward = 200, hint = "animais" },
 	{ text = "Treine até ⚡28 para fugir do Porco", kind = "speed", goal = 28, reward = 250, hint = "esteira" },
 	{ text = "Libere a Rota do Chiqueiro", kind = "route", id = "Chiqueiro", goal = 1, reward = 300, hint = "rotas" },
+	{ text = "👊 Derrube o Porco Bravo e pegue o 🥓 Bacon", kind = "stat", stat = "ko_Chiqueiro", goal = 1, reward = 350, hint = "rota" },
 	{ text = "Compre as 🦘 Botas de Pulo", kind = "upgrade", id = "Pulo", goal = 1, reward = 350, hint = "loja" },
 	{ text = "Abra o 💎 Baú do Tesouro", kind = "stat", stat = "chests", goal = 1, reward = 500, hint = "tesouro" },
 	{ text = "Compre a 🏃 Esteira Turbo", kind = "upgrade", id = "Esteira", goal = 1, reward = 400, hint = "loja" },
@@ -1000,6 +1003,7 @@ local DEFINITIONS = {
 	Notify = "RemoteEvent",
 	Profile = "RemoteEvent",
 	Effect = "RemoteEvent",
+	Bater = "RemoteEvent",
 }
 
 local folder: Folder
@@ -1135,6 +1139,9 @@ FarmService.init(map.plots)
 RouteService.init(map.zones, map.portals)
 GuardianService.init(map.zones)
 BoostService.init(map.zones)
+GuardianService.onKnockout = function(zone, position, def)
+	BoostService.dropFood(zone, position, def.food)
+end
 EquipmentService.init()
 TreasureService.init(map.zones)
 TrainingService.init(map.plots)
@@ -1507,10 +1514,8 @@ local function apply(player: Player, def: BoostDef)
 	end)
 end
 
-local function spawnPickup(zone, randomPoint: () -> Vector3)
-	local def = pick()
-	local position = randomPoint()
-
+-- Ícone flutuante que dá o boost `def` para quem encostar. onTaken roda depois de pegar.
+local function buildPickup(parent: Instance, position: Vector3, def: BoostDef, iconText: string, onTaken: () -> ())
 	local model = Instance.new("Model")
 	model.Name = "Boost" .. def.id
 	local core = Instance.new("Part")
@@ -1558,7 +1563,7 @@ local function spawnPickup(zone, randomPoint: () -> Vector3)
 	local icon = Instance.new("TextLabel")
 	icon.BackgroundTransparency = 1
 	icon.Size = UDim2.fromScale(1, 1)
-	icon.Text = def.emoji
+	icon.Text = iconText
 	icon.TextScaled = true
 	icon.Parent = gui
 	gui.Parent = core
@@ -1575,9 +1580,39 @@ local function spawnPickup(zone, randomPoint: () -> Vector3)
 		used = true
 		model:Destroy()
 		apply(player, def)
+		onTaken()
+	end)
+	model.Parent = parent
+	return model
+end
+
+local function spawnPickup(zone, randomPoint: () -> Vector3)
+	local def = pick()
+	buildPickup(zone.nodes.Parent, randomPoint(), def, def.emoji, function()
 		task.delay(rng:NextNumber(RESPAWN_MIN, RESPAWN_MAX), spawnPickup, zone, randomPoint)
 	end)
-	model.Parent = zone.nodes.Parent
+end
+
+local FOOD_LIFETIME = 30
+
+-- Comida que o guardião derrubado solta: dá o boost da comida (ex.: 🥓 Bacon = Escudo).
+function BoostService.dropFood(zone, position: Vector3, food)
+	local def: BoostDef? = nil
+	for _, candidate in BoostService.DEFS do
+		if candidate.id == food.boost then
+			def = candidate
+		end
+	end
+	if not def then
+		return
+	end
+	local model = buildPickup(zone.nodes.Parent, position, def, food.emoji, function() end)
+	model.Name = "Comida"
+	task.delay(FOOD_LIFETIME, function()
+		if model.Parent then
+			model:Destroy()
+		end
+	end)
 end
 
 function BoostService.init(zones)
@@ -1653,7 +1688,7 @@ local function template()
 		mission = { index = 1, base = 0 },
 		routes = { Galinheiro = true },
 		index = {},
-		stats = { legendaries = 0, nests = 0, collected = 0, deposited = 0, evolved = 0, chests = 0 },
+		stats = { legendaries = 0, nests = 0, collected = 0, deposited = 0, evolved = 0, chests = 0, knockouts = 0 },
 		lastOnline = 0,
 	}
 end
@@ -2411,11 +2446,13 @@ local Remotes = require(Shared.Remotes)
 local Style = require(Shared.Style)
 
 local Basket = require(script.Parent.Basket)
+local DataService = require(script.Parent.DataService)
 local Notify = require(script.Parent.Notify)
 
 local GuardianService = {}
 
-type Def = { species: string, name: string, speed: number, rarity: number }
+type Food = { emoji: string, name: string, boost: string }
+type Def = { species: string, name: string, emoji: string, speed: number, rarity: number, food: Food }
 
 local DEFS: { [string]: Def } = Guardians.byRoute
 
@@ -2433,9 +2470,17 @@ local DROP_LIFETIME = 45
 local WANDER_RADIUS = 22
 local WANDER_SPEED = 5
 local ANGRY = Color3.fromRGB(255, 70, 60)
+-- Bater: alcance, recarga, golpes até desmaiar, tontura curta e desmaio.
+local HIT_RANGE = 10
+local HIT_COOLDOWN = 0.7
+local HITS_TO_KO = 3
+local STUN_SECONDS = 2
+local KO_SECONDS = 6
+local HEAL_AFTER = 15
 
 type Guardian = {
 	def: Def,
+	routeId: string,
 	zone: any,
 	model: Model,
 	root: BasePart,
@@ -2449,12 +2494,23 @@ type Guardian = {
 	cooldownUntil: number,
 	wanderTo: Vector3?,
 	nextWander: number,
+	tag: TextLabel?,
+	alertLabel: TextLabel,
+	hits: number,
+	lastHitAt: number,
+	stunnedUntil: number,
+	knockedOut: boolean,
 }
 
 local guardians: { Guardian } = {}
 local chasing: { [Player]: Guardian } = {}
 local rng = Random.new()
 local EffectRemote: RemoteEvent
+local lastHit: { [Player]: number } = {}
+local updateTag: (Guardian) -> ()
+
+-- Chamado quando um guardião desmaia (init.server liga no BoostService para soltar a comida).
+GuardianService.onKnockout = nil :: ((zone: any, position: Vector3, def: Def, player: Player) -> ())?
 
 local function flat(v: Vector3): Vector3
 	return Vector3.new(v.X, 0, v.Z)
@@ -2609,7 +2665,7 @@ function GuardianService.alert(player: Player, position: Vector3, chance: number
 	local best: Guardian? = nil
 	local bestDistance = ALERT_RADIUS
 	for _, guardian in guardians do
-		if guardian.state ~= "chase" and guardian.state ~= "alert" and now >= guardian.cooldownUntil and inZone(guardian.zone, position) then
+		if guardian.state ~= "chase" and guardian.state ~= "alert" and now >= guardian.cooldownUntil and now >= guardian.stunnedUntil and inZone(guardian.zone, position) then
 			local distance = (flat(guardian.root.Position) - flat(position)).Magnitude
 			if distance < bestDistance then
 				best, bestDistance = guardian, distance
@@ -2621,10 +2677,118 @@ function GuardianService.alert(player: Player, position: Vector3, chance: number
 	end
 end
 
+-- Nome com corações: ❤️ = golpes que ainda aguenta.
+function updateTag(guardian: Guardian)
+	if not guardian.tag then
+		return
+	end
+	local hearts = string.rep("❤️", HITS_TO_KO - guardian.hits) .. string.rep("🖤", guardian.hits)
+	guardian.tag.Text = "😠 " .. guardian.def.name .. " ⚡" .. guardian.def.speed .. "  " .. hearts
+end
+
+-- Golpe do jogador: acerta o guardião mais perto na frente dele. 3 golpes = desmaio + comida.
+function GuardianService.hit(player: Player): boolean
+	local now = os.clock()
+	if lastHit[player] and now - lastHit[player] < HIT_COOLDOWN then
+		return false
+	end
+	lastHit[player] = now
+	local root = rootOf(player)
+	if not root then
+		return false
+	end
+	local best: Guardian? = nil
+	local bestDistance = HIT_RANGE
+	for _, guardian in guardians do
+		if not guardian.knockedOut and inZone(guardian.zone, root.Position) then
+			local offset = guardian.root.Position - root.Position
+			local distance = flat(offset).Magnitude
+			if distance < bestDistance and math.abs(offset.Y) < 7 then
+				best, bestDistance = guardian, distance
+			end
+		end
+	end
+	if not best then
+		return false
+	end
+	local guardian = best :: Guardian
+	if guardian.target then
+		stopChase(guardian)
+	end
+	guardian.state = "idle"
+	guardian.hits += 1
+	guardian.lastHitAt = now
+
+	-- Tranco para trás (sem entrar na zona segura).
+	local away = flat(guardian.root.Position - root.Position)
+	away = if away.Magnitude > 0.1 then away.Unit else flat(root.CFrame.LookVector).Unit
+	local pushed = flat(guardian.root.Position) + away * 6
+	if not inSafe(guardian.zone, pushed, 2) and inZone(guardian.zone, pushed) then
+		guardian.root.CFrame = CFrame.lookAt(pushed, pushed - away)
+	end
+	EffectRemote:FireClient(player, { kind = "pow", at = guardian.root.Position })
+
+	guardian.alert.Enabled = true
+	guardian.alertLabel.Text = "💫"
+	if guardian.hits >= HITS_TO_KO then
+		guardian.knockedOut = true
+		guardian.stunnedUntil = now + KO_SECONDS
+		guardian.cooldownUntil = now + KO_SECONDS + COOLDOWN
+		local profile = DataService.get(player)
+		if profile then
+			profile.stats.knockouts = (profile.stats.knockouts or 0) + 1
+			local perRoute = "ko_" .. guardian.routeId
+			profile.stats[perRoute] = (profile.stats[perRoute] or 0) + 1
+		end
+		local food = guardian.def.food
+		Notify.toast(player, "💥 Você derrubou o " .. guardian.def.name .. "! Pegue: " .. food.emoji .. " " .. food.name, Color3.fromRGB(255, 205, 60), "revelar")
+		if GuardianService.onKnockout then
+			GuardianService.onKnockout(guardian.zone, guardian.root.Position + away * 3, guardian.def, player)
+		end
+	else
+		guardian.stunnedUntil = now + STUN_SECONDS
+		guardian.cooldownUntil = math.max(guardian.cooldownUntil, now + STUN_SECONDS)
+	end
+	updateTag(guardian)
+	return true
+end
+
 local function step(guardian: Guardian, dt: number, now: number)
 	local position = guardian.root.Position
 	local goal: Vector3? = nil
 	local speed = WANDER_SPEED
+
+	if guardian.stunnedUntil > 0 then
+		if now < guardian.stunnedUntil then
+			local base = CFrame.new(position.X, 0, position.Z) * guardian.root.CFrame.Rotation
+			if guardian.knockedOut then
+				-- Desmaiado: deitado de lado.
+				local look = flat(guardian.root.CFrame.LookVector)
+				look = if look.Magnitude > 0.1 then look.Unit else Vector3.zAxis
+				guardian.root.CFrame = CFrame.lookAt(Vector3.new(position.X, 0.6, position.Z), Vector3.new(position.X, 0.6, position.Z) + look) * CFrame.Angles(0, 0, math.rad(90))
+			else
+				-- Tonto: balançando no lugar.
+				guardian.root.CFrame = base * CFrame.Angles(0, 0, math.sin(now * 12) * 0.25)
+			end
+			return
+		end
+		-- Acordou: fica em pé de novo.
+		guardian.stunnedUntil = 0
+		guardian.alert.Enabled = false
+		guardian.alertLabel.Text = "!"
+		if guardian.knockedOut then
+			guardian.knockedOut = false
+			guardian.hits = 0
+			updateTag(guardian)
+		end
+		local look = flat(guardian.root.CFrame.LookVector)
+		look = if look.Magnitude > 0.1 then look.Unit else Vector3.zAxis
+		guardian.root.CFrame = CFrame.lookAt(Vector3.new(position.X, 0, position.Z), Vector3.new(position.X, 0, position.Z) + look)
+	end
+	if guardian.hits > 0 and now - guardian.lastHitAt > HEAL_AFTER then
+		guardian.hits = 0
+		updateTag(guardian)
+	end
 
 	if guardian.state == "alert" then
 		local target = guardian.target and rootOf(guardian.target)
@@ -2702,7 +2866,7 @@ local function step(guardian: Guardian, dt: number, now: number)
 	guardian.root.CFrame = CFrame.lookAt(at, at + direction)
 end
 
-local function makeAlert(root: BasePart): BillboardGui
+local function makeAlert(root: BasePart): (BillboardGui, TextLabel)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Alerta"
 	gui.Size = UDim2.fromScale(4, 4)
@@ -2720,7 +2884,7 @@ local function makeAlert(root: BasePart): BillboardGui
 	Style.outline(label, 4)
 	label.Parent = gui
 	gui.Parent = root
-	return gui
+	return gui, label
 end
 
 function GuardianService.init(zones)
@@ -2738,19 +2902,26 @@ function GuardianService.init(zones)
 				local tag = root:FindFirstChild("Tag")
 				local tagLabel = tag and tag:FindFirstChildOfClass("TextLabel")
 				if tagLabel then
-					tagLabel.Text = "😠 " .. def.name .. " ⚡" .. def.speed
 					tagLabel.TextColor3 = ANGRY
 				end
+				local alert, alertLabel = makeAlert(root)
 				local angle = (i / PER_ZONE) * math.pi * 2
 				local home = zone.origin + Vector3.new(math.cos(angle), 0, math.sin(angle)) * zone.size * 0.25
 				model:PivotTo(CFrame.new(home))
 				model.Parent = folder
 				table.insert(guardians, {
 					def = def,
+					routeId = routeId,
 					zone = zone,
 					model = model,
 					root = root,
-					alert = makeAlert(root),
+					alert = alert,
+					alertLabel = alertLabel,
+					tag = tagLabel :: TextLabel?,
+					hits = 0,
+					lastHitAt = 0,
+					stunnedUntil = 0,
+					knockedOut = false,
 					home = home,
 					state = "idle",
 					target = nil,
@@ -2761,9 +2932,14 @@ function GuardianService.init(zones)
 					wanderTo = nil,
 					nextWander = 0,
 				})
+				updateTag(guardians[#guardians])
 			end
 		end
 	end
+
+	Remotes.event("Bater").OnServerEvent:Connect(function(player)
+		GuardianService.hit(player)
+	end)
 
 	RunService.Heartbeat:Connect(function(dt)
 		local now = os.clock()
@@ -2777,6 +2953,7 @@ function GuardianService.init(zones)
 		if guardian then
 			stopChase(guardian)
 		end
+		lastHit[player] = nil
 	end)
 end
 
@@ -4573,7 +4750,7 @@ end
 
 return TreasureService
 ]]></ProtectedString></Properties></Item></Item></Item></Item>
-<Item class="StarterPlayer" referent="RBX0000003A"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000039"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000038"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+<Item class="StarterPlayer" referent="RBX0000003B"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX0000003A"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000039"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -4586,6 +4763,7 @@ local Effects = require(script.Effects)
 local DoubleJump = require(script.DoubleJump)
 local Sfx = require(script.Sfx)
 local Treadmill = require(script.Treadmill)
+local Punch = require(script.Punch)
 local Welcome = require(script.UI.Welcome)
 local MissionPanel = require(script.UI.MissionPanel)
 local TrainingPanel = require(script.UI.TrainingPanel)
@@ -4765,6 +4943,7 @@ Effects.start()
 DoubleJump.start()
 Sfx.start()
 Treadmill.start()
+Punch.start()
 
 -- Galo cantando quando o Galo Bravo começa a correr atrás de você.
 player:GetAttributeChangedSignal("Perseguido"):Connect(function()
@@ -4881,6 +5060,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Remotes)
 local Style = require(Shared.Style)
 
+local Punch = require(script.Parent.Punch)
 local Sfx = require(script.Parent.Sfx)
 
 local Effects = {}
@@ -4952,6 +5132,8 @@ function Effects.start()
 	Remotes.event("Effect").OnClientEvent:Connect(function(payload)
 		if payload.kind == "knock" then
 			knock(payload.from)
+		elseif payload.kind == "pow" then
+			Punch.pow(payload.at)
 		end
 	end)
 end
@@ -5151,7 +5333,7 @@ function Guide.update()
 			text = "🏃 Treinando! " .. (points % Balance.TRAIN_PER_SPEED) .. "/" .. Balance.TRAIN_PER_SPEED .. " para +1 velocidade"
 		end
 	elseif chaser then
-		text = "🏃 Fuja para a zona segura!"
+		text = "🏃 Fuja para a zona segura ou 👊 bata (F)!"
 		place = if zone then safeZonePosition(zone) else nil
 	elseif zone and basketFull then
 		text, place = "🧺 Cesta cheia! Volte para casa!", returnPortalPosition(zone)
@@ -5273,7 +5455,100 @@ function Guide.start()
 end
 
 return Guide
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000026"><Properties><string name="Name">Sfx</string><ProtectedString name="Source"><![CDATA[-- Toca os efeitos sonoros só para este jogador (SoundService:PlayLocalSound).
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000026"><Properties><string name="Name">Punch</string><ProtectedString name="Source"><![CDATA[-- 👊 Bater: tecla F (ou botão X do controle) e um botão na tela do celular.
+-- O cliente só faz o avanço e a animação; quem decide se acertou é o servidor (GuardianService.hit).
+local ContextActionService = game:GetService("ContextActionService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Remotes = require(ReplicatedStorage:WaitForChild("Shared").Remotes)
+
+local Sfx = require(script.Parent.Sfx)
+
+local Punch = {}
+
+local COOLDOWN = 0.7
+local LUNGE = 28
+
+local player = Players.LocalPlayer
+local last = 0
+
+local function swing()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not humanoid or not root or humanoid.PlatformStand then
+		return
+	end
+	-- Animação de golpe que já vem no Animate do Roblox (toolslash), se existir.
+	local animate = character:FindFirstChild("Animate")
+	local slash = animate and animate:FindFirstChild("toolslash")
+	local animation = slash and slash:FindFirstChildOfClass("Animation")
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if animation and animator then
+		local track = animator:LoadAnimation(animation)
+		track.Priority = Enum.AnimationPriority.Action
+		track:Play(0.05, 1, 1.4)
+	end
+	-- Pequeno avanço para a frente, dá a sensação de soco.
+	local forward = root.CFrame.LookVector
+	root.AssemblyLinearVelocity = Vector3.new(forward.X * LUNGE, root.AssemblyLinearVelocity.Y, forward.Z * LUNGE)
+end
+
+local function onAction(_, state: Enum.UserInputState)
+	if state ~= Enum.UserInputState.Begin then
+		return Enum.ContextActionResult.Pass
+	end
+	local now = os.clock()
+	if now - last < COOLDOWN then
+		return Enum.ContextActionResult.Sink
+	end
+	last = now
+	swing()
+	Remotes.event("Bater"):FireServer()
+	return Enum.ContextActionResult.Sink
+end
+
+function Punch.start()
+	ContextActionService:BindAction("Bater", onAction, true, Enum.KeyCode.F, Enum.KeyCode.ButtonX)
+	ContextActionService:SetTitle("Bater", "👊")
+	ContextActionService:SetPosition("Bater", UDim2.new(1, -170, 1, -150))
+end
+
+-- "💥 POW!" onde o golpe acertou (o servidor manda quando acerta).
+function Punch.pow(at: Vector3)
+	Sfx.play("empurrao")
+	local anchor = Instance.new("Part")
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.CanTouch = false
+	anchor.Transparency = 1
+	anchor.Size = Vector3.one * 0.2
+	anchor.CFrame = CFrame.new(at + Vector3.new(0, 5, 0))
+	anchor.Parent = workspace.CurrentCamera
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromScale(7, 3)
+	gui.AlwaysOnTop = true
+	gui.LightInfluence = 0
+	gui.Parent = anchor
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.FredokaOne
+	label.Text = "💥 POW!"
+	label.TextScaled = true
+	label.TextColor3 = Color3.fromRGB(255, 220, 60)
+	label.TextStrokeTransparency = 0
+	label.Rotation = math.random(-12, 12)
+	label.Parent = gui
+	task.delay(0.6, function()
+		anchor:Destroy()
+	end)
+end
+
+return Punch
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000027"><Properties><string name="Name">Sfx</string><ProtectedString name="Source"><![CDATA[-- Toca os efeitos sonoros só para este jogador (SoundService:PlayLocalSound).
 local ContentProvider = game:GetService("ContentProvider")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
@@ -5311,7 +5586,7 @@ function Sfx.start()
 end
 
 return Sfx
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000027"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000028"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -5407,7 +5682,7 @@ function State.start()
 end
 
 return State
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000028"><Properties><string name="Name">Treadmill</string><ProtectedString name="Source"><![CDATA[-- Visual da esteira no cliente: setas da lona correndo, boneco correndo sozinho,
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000029"><Properties><string name="Name">Treadmill</string><ProtectedString name="Source"><![CDATA[-- Visual da esteira no cliente: setas da lona correndo, boneco correndo sozinho,
 -- "+10 ⚡" subindo a cada ganho e aura de fogo enquanto treina.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -5592,7 +5867,7 @@ function Treadmill.start()
 end
 
 return Treadmill
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000036"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX00000029"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000037"><Properties><string name="Name">UI</string></Properties><Item class="ModuleScript" referent="RBX0000002A"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
@@ -5956,7 +6231,7 @@ function Hud.tick()
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002A"><Properties><string name="Name">Kit</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002B"><Properties><string name="Name">Kit</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
 
 local Kit = {}
 
@@ -6101,7 +6376,7 @@ function Kit.section(text: string, order: number): TextLabel
 end
 
 return Kit
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002B"><Properties><string name="Name">MissionPanel</string><ProtectedString name="Source"><![CDATA[-- Painel fixo da missão atual (lado direito): número, texto, barra de progresso e prêmio.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002C"><Properties><string name="Name">MissionPanel</string><ProtectedString name="Source"><![CDATA[-- Painel fixo da missão atual (lado direito): número, texto, barra de progresso e prêmio.
 -- Lê os atributos "Missao*" publicados pelo MissionService.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -6224,7 +6499,7 @@ function MissionPanel.tick()
 end
 
 return MissionPanel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002C"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002D"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[local TweenService = game:GetService("TweenService")
 
 local Kit = require(script.Parent.Kit)
 
@@ -6449,7 +6724,7 @@ function Notifications.reveal(payload)
 end
 
 return Notifications
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000032"><Properties><string name="Name">Pages</string></Properties><Item class="ModuleScript" referent="RBX0000002D"><Properties><string name="Name">Animais</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX00000033"><Properties><string name="Name">Pages</string></Properties><Item class="ModuleScript" referent="RBX0000002E"><Properties><string name="Name">Animais</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
@@ -6628,7 +6903,7 @@ return function(content: Frame, profile, ctx)
 		sellButton(buttons, animal, ctx)
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002E"><Properties><string name="Name">Indice</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002F"><Properties><string name="Name">Indice</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Rarities = require(Shared.Config.Rarities)
@@ -6692,7 +6967,7 @@ return function(content: Frame, profile, _ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000002F"><Properties><string name="Name">Loja</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000030"><Properties><string name="Name">Loja</string><ProtectedString name="Source"><![CDATA[local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -6881,7 +7156,7 @@ return function(content: Frame, profile, ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000030"><Properties><string name="Name">Mochila</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000031"><Properties><string name="Name">Mochila</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Format = require(Shared.Format)
@@ -6952,7 +7227,7 @@ return function(content: Frame, profile, _ctx)
 		})
 	end
 end
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000031"><Properties><string name="Name">Rotas</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000032"><Properties><string name="Name">Rotas</string><ProtectedString name="Source"><![CDATA[local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared.Balance)
@@ -7049,7 +7324,7 @@ return function(content: Frame, profile, ctx)
 		end
 	end
 end
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000033"><Properties><string name="Name">Panel</string><ProtectedString name="Source"><![CDATA[local Kit = require(script.Parent.Kit)
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000034"><Properties><string name="Name">Panel</string><ProtectedString name="Source"><![CDATA[local Kit = require(script.Parent.Kit)
 
 export type Context = {
 	act: (action: string, arg: string?) -> (boolean, any),
@@ -7171,7 +7446,7 @@ function Panel:refreshCosts(coins: number)
 end
 
 return Panel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000034"><Properties><string name="Name">TrainingPanel</string><ProtectedString name="Source"><![CDATA[-- Painel que aparece embaixo enquanto o jogador está na esteira: quanto ganha por segundo,
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000035"><Properties><string name="Name">TrainingPanel</string><ProtectedString name="Source"><![CDATA[-- Painel que aparece embaixo enquanto o jogador está na esteira: quanto ganha por segundo,
 -- barra até o próximo +1 e "⚡ 18 → 19", com o próximo guardião a ultrapassar.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -7262,7 +7537,7 @@ function TrainingPanel.tick()
 end
 
 return TrainingPanel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000035"><Properties><string name="Name">Welcome</string><ProtectedString name="Source"><![CDATA[-- Janela "Bem-vindo de volta!" com os ganhos offline (as moedas já entraram no servidor;
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000036"><Properties><string name="Name">Welcome</string><ProtectedString name="Source"><![CDATA[-- Janela "Bem-vindo de volta!" com os ganhos offline (as moedas já entraram no servidor;
 -- o botão só fecha a janela com festa).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -7382,7 +7657,7 @@ function Welcome.show(gui: ScreenGui, scales: { UIScale }, amount: number, secon
 end
 
 return Welcome
-]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000037"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
+]]></ProtectedString></Properties></Item></Item><Item class="ModuleScript" referent="RBX00000038"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -7451,5 +7726,5 @@ end
 
 return World
 ]]></ProtectedString></Properties></Item></Item></Item></Item>
-<Item class="Lighting" referent="RBX0000003B"><Properties><string name="Name">Lighting</string><token name="Technology">4</token></Properties></Item>
+<Item class="Lighting" referent="RBX0000003C"><Properties><string name="Name">Lighting</string><token name="Technology">4</token></Properties></Item>
 </roblox>

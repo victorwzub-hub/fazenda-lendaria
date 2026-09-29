@@ -192,7 +192,7 @@ function Guide.update()
 			text = "🏃 Treinando! " .. (points % Balance.TRAIN_PER_SPEED) .. "/" .. Balance.TRAIN_PER_SPEED .. " para +1 velocidade"
 		end
 	elseif chaser then
-		text = "🏃 Fuja para a zona segura!"
+		text = "🏃 Fuja para a zona segura ou 👊 bata (F)!"
 		place = if zone then safeZonePosition(zone) else nil
 	elseif zone and basketFull then
 		text, place = "🧺 Cesta cheia! Volte para casa!", returnPortalPosition(zone)

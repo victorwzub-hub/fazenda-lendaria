@@ -6,6 +6,7 @@ local DEFINITIONS = {
 	Notify = "RemoteEvent",
 	Profile = "RemoteEvent",
 	Effect = "RemoteEvent",
+	Bater = "RemoteEvent",
 }
 
 local folder: Folder

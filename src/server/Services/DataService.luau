@@ -42,7 +42,7 @@ local function template()
 		mission = { index = 1, base = 0 },
 		routes = { Galinheiro = true },
 		index = {},
-		stats = { legendaries = 0, nests = 0, collected = 0, deposited = 0, evolved = 0, chests = 0 },
+		stats = { legendaries = 0, nests = 0, collected = 0, deposited = 0, evolved = 0, chests = 0, knockouts = 0 },
 		lastOnline = 0,
 	}
 end

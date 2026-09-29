@@ -14,11 +14,13 @@ local Remotes = require(Shared.Remotes)
 local Style = require(Shared.Style)
 
 local Basket = require(script.Parent.Basket)
+local DataService = require(script.Parent.DataService)
 local Notify = require(script.Parent.Notify)
 
 local GuardianService = {}
 
-type Def = { species: string, name: string, speed: number, rarity: number }
+type Food = { emoji: string, name: string, boost: string }
+type Def = { species: string, name: string, emoji: string, speed: number, rarity: number, food: Food }
 
 local DEFS: { [string]: Def } = Guardians.byRoute
 
@@ -36,9 +38,17 @@ local DROP_LIFETIME = 45
 local WANDER_RADIUS = 22
 local WANDER_SPEED = 5
 local ANGRY = Color3.fromRGB(255, 70, 60)
+-- Bater: alcance, recarga, golpes até desmaiar, tontura curta e desmaio.
+local HIT_RANGE = 10
+local HIT_COOLDOWN = 0.7
+local HITS_TO_KO = 3
+local STUN_SECONDS = 2
+local KO_SECONDS = 6
+local HEAL_AFTER = 15
 
 type Guardian = {
 	def: Def,
+	routeId: string,
 	zone: any,
 	model: Model,
 	root: BasePart,
@@ -52,12 +62,23 @@ type Guardian = {
 	cooldownUntil: number,
 	wanderTo: Vector3?,
 	nextWander: number,
+	tag: TextLabel?,
+	alertLabel: TextLabel,
+	hits: number,
+	lastHitAt: number,
+	stunnedUntil: number,
+	knockedOut: boolean,
 }
 
 local guardians: { Guardian } = {}
 local chasing: { [Player]: Guardian } = {}
 local rng = Random.new()
 local EffectRemote: RemoteEvent
+local lastHit: { [Player]: number } = {}
+local updateTag: (Guardian) -> ()
+
+-- Chamado quando um guardião desmaia (init.server liga no BoostService para soltar a comida).
+GuardianService.onKnockout = nil :: ((zone: any, position: Vector3, def: Def, player: Player) -> ())?
 
 local function flat(v: Vector3): Vector3
 	return Vector3.new(v.X, 0, v.Z)
@@ -212,7 +233,7 @@ function GuardianService.alert(player: Player, position: Vector3, chance: number
 	local best: Guardian? = nil
 	local bestDistance = ALERT_RADIUS
 	for _, guardian in guardians do
-		if guardian.state ~= "chase" and guardian.state ~= "alert" and now >= guardian.cooldownUntil and inZone(guardian.zone, position) then
+		if guardian.state ~= "chase" and guardian.state ~= "alert" and now >= guardian.cooldownUntil and now >= guardian.stunnedUntil and inZone(guardian.zone, position) then
 			local distance = (flat(guardian.root.Position) - flat(position)).Magnitude
 			if distance < bestDistance then
 				best, bestDistance = guardian, distance
@@ -224,10 +245,118 @@ function GuardianService.alert(player: Player, position: Vector3, chance: number
 	end
 end
 
+-- Nome com corações: ❤️ = golpes que ainda aguenta.
+function updateTag(guardian: Guardian)
+	if not guardian.tag then
+		return
+	end
+	local hearts = string.rep("❤️", HITS_TO_KO - guardian.hits) .. string.rep("🖤", guardian.hits)
+	guardian.tag.Text = "😠 " .. guardian.def.name .. " ⚡" .. guardian.def.speed .. "  " .. hearts
+end
+
+-- Golpe do jogador: acerta o guardião mais perto na frente dele. 3 golpes = desmaio + comida.
+function GuardianService.hit(player: Player): boolean
+	local now = os.clock()
+	if lastHit[player] and now - lastHit[player] < HIT_COOLDOWN then
+		return false
+	end
+	lastHit[player] = now
+	local root = rootOf(player)
+	if not root then
+		return false
+	end
+	local best: Guardian? = nil
+	local bestDistance = HIT_RANGE
+	for _, guardian in guardians do
+		if not guardian.knockedOut and inZone(guardian.zone, root.Position) then
+			local offset = guardian.root.Position - root.Position
+			local distance = flat(offset).Magnitude
+			if distance < bestDistance and math.abs(offset.Y) < 7 then
+				best, bestDistance = guardian, distance
+			end
+		end
+	end
+	if not best then
+		return false
+	end
+	local guardian = best :: Guardian
+	if guardian.target then
+		stopChase(guardian)
+	end
+	guardian.state = "idle"
+	guardian.hits += 1
+	guardian.lastHitAt = now
+
+	-- Tranco para trás (sem entrar na zona segura).
+	local away = flat(guardian.root.Position - root.Position)
+	away = if away.Magnitude > 0.1 then away.Unit else flat(root.CFrame.LookVector).Unit
+	local pushed = flat(guardian.root.Position) + away * 6
+	if not inSafe(guardian.zone, pushed, 2) and inZone(guardian.zone, pushed) then
+		guardian.root.CFrame = CFrame.lookAt(pushed, pushed - away)
+	end
+	EffectRemote:FireClient(player, { kind = "pow", at = guardian.root.Position })
+
+	guardian.alert.Enabled = true
+	guardian.alertLabel.Text = "💫"
+	if guardian.hits >= HITS_TO_KO then
+		guardian.knockedOut = true
+		guardian.stunnedUntil = now + KO_SECONDS
+		guardian.cooldownUntil = now + KO_SECONDS + COOLDOWN
+		local profile = DataService.get(player)
+		if profile then
+			profile.stats.knockouts = (profile.stats.knockouts or 0) + 1
+			local perRoute = "ko_" .. guardian.routeId
+			profile.stats[perRoute] = (profile.stats[perRoute] or 0) + 1
+		end
+		local food = guardian.def.food
+		Notify.toast(player, "💥 Você derrubou o " .. guardian.def.name .. "! Pegue: " .. food.emoji .. " " .. food.name, Color3.fromRGB(255, 205, 60), "revelar")
+		if GuardianService.onKnockout then
+			GuardianService.onKnockout(guardian.zone, guardian.root.Position + away * 3, guardian.def, player)
+		end
+	else
+		guardian.stunnedUntil = now + STUN_SECONDS
+		guardian.cooldownUntil = math.max(guardian.cooldownUntil, now + STUN_SECONDS)
+	end
+	updateTag(guardian)
+	return true
+end
+
 local function step(guardian: Guardian, dt: number, now: number)
 	local position = guardian.root.Position
 	local goal: Vector3? = nil
 	local speed = WANDER_SPEED
+
+	if guardian.stunnedUntil > 0 then
+		if now < guardian.stunnedUntil then
+			local base = CFrame.new(position.X, 0, position.Z) * guardian.root.CFrame.Rotation
+			if guardian.knockedOut then
+				-- Desmaiado: deitado de lado.
+				local look = flat(guardian.root.CFrame.LookVector)
+				look = if look.Magnitude > 0.1 then look.Unit else Vector3.zAxis
+				guardian.root.CFrame = CFrame.lookAt(Vector3.new(position.X, 0.6, position.Z), Vector3.new(position.X, 0.6, position.Z) + look) * CFrame.Angles(0, 0, math.rad(90))
+			else
+				-- Tonto: balançando no lugar.
+				guardian.root.CFrame = base * CFrame.Angles(0, 0, math.sin(now * 12) * 0.25)
+			end
+			return
+		end
+		-- Acordou: fica em pé de novo.
+		guardian.stunnedUntil = 0
+		guardian.alert.Enabled = false
+		guardian.alertLabel.Text = "!"
+		if guardian.knockedOut then
+			guardian.knockedOut = false
+			guardian.hits = 0
+			updateTag(guardian)
+		end
+		local look = flat(guardian.root.CFrame.LookVector)
+		look = if look.Magnitude > 0.1 then look.Unit else Vector3.zAxis
+		guardian.root.CFrame = CFrame.lookAt(Vector3.new(position.X, 0, position.Z), Vector3.new(position.X, 0, position.Z) + look)
+	end
+	if guardian.hits > 0 and now - guardian.lastHitAt > HEAL_AFTER then
+		guardian.hits = 0
+		updateTag(guardian)
+	end
 
 	if guardian.state == "alert" then
 		local target = guardian.target and rootOf(guardian.target)
@@ -305,7 +434,7 @@ local function step(guardian: Guardian, dt: number, now: number)
 	guardian.root.CFrame = CFrame.lookAt(at, at + direction)
 end
 
-local function makeAlert(root: BasePart): BillboardGui
+local function makeAlert(root: BasePart): (BillboardGui, TextLabel)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Alerta"
 	gui.Size = UDim2.fromScale(4, 4)
@@ -323,7 +452,7 @@ local function makeAlert(root: BasePart): BillboardGui
 	Style.outline(label, 4)
 	label.Parent = gui
 	gui.Parent = root
-	return gui
+	return gui, label
 end
 
 function GuardianService.init(zones)
@@ -341,19 +470,26 @@ function GuardianService.init(zones)
 				local tag = root:FindFirstChild("Tag")
 				local tagLabel = tag and tag:FindFirstChildOfClass("TextLabel")
 				if tagLabel then
-					tagLabel.Text = "😠 " .. def.name .. " ⚡" .. def.speed
 					tagLabel.TextColor3 = ANGRY
 				end
+				local alert, alertLabel = makeAlert(root)
 				local angle = (i / PER_ZONE) * math.pi * 2
 				local home = zone.origin + Vector3.new(math.cos(angle), 0, math.sin(angle)) * zone.size * 0.25
 				model:PivotTo(CFrame.new(home))
 				model.Parent = folder
 				table.insert(guardians, {
 					def = def,
+					routeId = routeId,
 					zone = zone,
 					model = model,
 					root = root,
-					alert = makeAlert(root),
+					alert = alert,
+					alertLabel = alertLabel,
+					tag = tagLabel :: TextLabel?,
+					hits = 0,
+					lastHitAt = 0,
+					stunnedUntil = 0,
+					knockedOut = false,
 					home = home,
 					state = "idle",
 					target = nil,
@@ -364,9 +500,14 @@ function GuardianService.init(zones)
 					wanderTo = nil,
 					nextWander = 0,
 				})
+				updateTag(guardians[#guardians])
 			end
 		end
 	end
+
+	Remotes.event("Bater").OnServerEvent:Connect(function(player)
+		GuardianService.hit(player)
+	end)
 
 	RunService.Heartbeat:Connect(function(dt)
 		local now = os.clock()
@@ -380,6 +521,7 @@ function GuardianService.init(zones)
 		if guardian then
 			stopChase(guardian)
 		end
+		lastHit[player] = nil
 	end)
 end
 
